@@ -1,0 +1,160 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Platform {
+  SHOPIFY
+  ETSY
+}
+
+enum OrderStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+  REFUNDED
+}
+
+enum FeeType {
+  SHOPIFY_PROCESSING
+  SHOPIFY_APP
+  SHOPIFY_OTHER
+  PAYMENT_PROCESSING
+}
+
+enum ExpenseCategoryType {
+  SOURCING
+  PACKAGING
+  OTHER
+}
+
+enum SyncStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+model Order {
+  id String @id @default(cuid())
+  platform Platform
+  platformOrderId String
+  orderDate DateTime
+  grossRevenueCents Int
+  shippingChargedCents Int
+  shippingCostCents Int?
+  taxesCents Int
+  cogsCents Int @default(0)
+  status OrderStatus @default(OPEN)
+
+  feeLines FeeLine[]
+  refunds Refund[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([platform, platformOrderId])
+  @@index([orderDate])
+  @@index([platform])
+  @@index([status])
+}
+
+model FeeLine {
+  id String @id @default(cuid())
+  orderId String
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  type FeeType
+  amountCents Int
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([type])
+}
+
+model Refund {
+  id String @id @default(cuid())
+  orderId String
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  platformRefundId String
+  refundDate DateTime
+  amountCents Int
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([platformRefundId])
+}
+
+model Payout {
+  id String @id @default(cuid())
+  platform Platform
+  platformPayoutId String
+
+  payoutDate DateTime
+  totalCents Int
+  chargesFeesCents Int
+  adjustmentsFeesCents Int
+  refundsFeesCents Int
+
+  createdAt DateTime @default(now())
+
+  @@unique([platform, platformPayoutId])
+  @@index([payoutDate])
+}
+
+model ExpenseEvent {
+  id String @id @default(cuid())
+  eventDate DateTime
+  category ExpenseCategoryType
+  amountCents Int
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eventDate])
+  @@index([category])
+}
+
+model SyncRun {
+  id String @id @default(cuid())
+  platform Platform
+
+  startedAt DateTime
+  finishedAt DateTime?
+  status SyncStatus @default(RUNNING)
+
+  ordersUpserted Int @default(0)
+  payoutsSynced Int @default(0)
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+
+  @@index([platform])
+  @@index([startedAt])
+}
+
+model ShopifyConnection {
+  id String @id @default(cuid())
+  accessToken String
+  shop String
+
+  connectedAt DateTime @default(now())
+  lastSyncedAt DateTime?
+
+  @@unique([shop])
+}
+
+model Settings {
+  id String @id @default(cuid())
+  accentColor String @default("#c0392b")
+  excludeTaxesFromGross Boolean @default(false)
+
+  updatedAt DateTime @updatedAt
+}
