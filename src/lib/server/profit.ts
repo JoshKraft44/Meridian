@@ -49,7 +49,7 @@ export async function getProfitSummary(
       _sum: { amountCents: true }
     }),
     db.expenseEvent.aggregate({
-      where: { date: { gte: start, lte: end } },
+      where: { eventDate: { gte: start, lte: end } },
       _sum: { amountCents: true }
     })
   ]);

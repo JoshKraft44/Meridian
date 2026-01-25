@@ -1,6 +1,7 @@
 import type { RequestHandler } from './$types';
 import { redirect, error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
+import { env as pubEnv } from '$env/dynamic/public';
 import { createHmac } from 'crypto';
 
 const SCOPES = 'read_orders,read_finances,read_shipping';
@@ -24,7 +25,7 @@ export const GET: RequestHandler = async ({ url, cookies, locals }) => {
     maxAge: 600
   });
 
-  const callbackUrl = `${env.PUBLIC_APP_URL}/api/shopify/callback`;
+  const callbackUrl = `${pubEnv.PUBLIC_APP_URL}/api/shopify/callback`;
 
   const authUrl = new URL(`https://${shop}/admin/oauth/authorize`);
   authUrl.searchParams.set('client_id', env.SHOPIFY_CLIENT_ID);

@@ -1,7 +1,6 @@
 import { db } from '$lib/db';
 import { fetchAllOrders, fetchAllPayouts, fetchAllBalanceTransactions } from './api';
-import type { ShopifyOrder, ShopifyPayout, ShopifyBalanceTransaction } from './api';
-import { Platform, SyncStatus, OrderStatus } from '@prisma/client';
+import { Platform, SyncStatus, OrderStatus, FeeType } from '@prisma/client';
 
 function toCents(amount: string): number {
   return Math.round(parseFloat(amount) * 100);
@@ -18,13 +17,6 @@ function mapOrderStatus(financial: string): OrderStatus {
   }
 }
 
-function customerName(order: ShopifyOrder): string | null {
-  const addr = order.billing_address;
-  if (!addr) return null;
-  const parts = [addr.first_name, addr.last_name].filter(Boolean);
-  return parts.length > 0 ? parts.join(' ') : null;
-}
-
 async function upsertOrders(shop: string, token: string, since?: string): Promise<number> {
   let count = 0;
 
@@ -33,17 +25,13 @@ async function upsertOrders(shop: string, token: string, since?: string): Promis
       const orderData = {
         platform: Platform.SHOPIFY,
         platformOrderId: raw.id.toString(),
-        orderNumber: raw.name,
         orderDate: new Date(raw.created_at),
         grossRevenueCents: toCents(raw.total_price),
         shippingChargedCents: toCents(
           raw.total_shipping_price_set?.shop_money?.amount ?? '0'
         ),
         taxesCents: toCents(raw.total_tax),
-        currency: raw.currency,
-        status: mapOrderStatus(raw.financial_status),
-        customerName: customerName(raw),
-        customerEmail: raw.email ?? null
+        status: mapOrderStatus(raw.financial_status)
       };
 
       const order = await db.order.upsert({
@@ -66,9 +54,9 @@ async function upsertOrders(shop: string, token: string, since?: string): Promis
             .filter((t) => t.kind === 'refund' && t.status === 'success')
             .map((t) => ({
               orderId: order.id,
+              platformRefundId: r.id.toString(),
               amountCents: toCents(t.amount),
-              date: new Date(r.processed_at),
-              reason: null
+              refundDate: new Date(r.processed_at)
             }))
         );
 
@@ -90,11 +78,6 @@ async function upsertPayouts(shop: string, token: string): Promise<number> {
   try {
     for await (const batch of fetchAllPayouts(shop, token)) {
       for (const raw of batch) {
-        const feeCents =
-          toCents(raw.summary.charges_fee_amount) +
-          toCents(raw.summary.adjustments_fee_amount) +
-          toCents(raw.summary.refunds_fee_amount);
-
         await db.payout.upsert({
           where: {
             platform_platformPayoutId: {
@@ -105,16 +88,17 @@ async function upsertPayouts(shop: string, token: string): Promise<number> {
           create: {
             platformPayoutId: raw.id.toString(),
             platform: Platform.SHOPIFY,
-            amountCents: toCents(raw.amount),
-            feeCents,
-            date: new Date(raw.date),
-            status: raw.status,
-            currency: raw.currency
+            totalCents: toCents(raw.amount),
+            chargesFeesCents: toCents(raw.summary.charges_fee_amount),
+            adjustmentsFeesCents: toCents(raw.summary.adjustments_fee_amount),
+            refundsFeesCents: toCents(raw.summary.refunds_fee_amount),
+            payoutDate: new Date(raw.date)
           },
           update: {
-            amountCents: toCents(raw.amount),
-            feeCents,
-            status: raw.status
+            totalCents: toCents(raw.amount),
+            chargesFeesCents: toCents(raw.summary.charges_fee_amount),
+            adjustmentsFeesCents: toCents(raw.summary.adjustments_fee_amount),
+            refundsFeesCents: toCents(raw.summary.refunds_fee_amount)
           }
         });
 
@@ -122,7 +106,6 @@ async function upsertPayouts(shop: string, token: string): Promise<number> {
       }
     }
   } catch (err) {
-    // Shopify Payments may not be enabled or scopes may be missing
     const message = err instanceof Error ? err.message : String(err);
     if (message.includes('403') || message.includes('payment')) {
       console.warn('[sync] Shopify Payments not available — skipping payouts');
@@ -138,8 +121,7 @@ async function upsertFeeLines(shop: string, token: string): Promise<void> {
   try {
     for await (const batch of fetchAllBalanceTransactions(shop, token)) {
       const paymentTxns = batch.filter(
-        (t): t is ShopifyBalanceTransaction & { source_order_id: number } =>
-          t.type === 'payment' && t.source_order_id !== null && parseFloat(t.fee) > 0
+        (t) => t.type === 'payment' && t.source_order_id !== null && parseFloat(t.fee) > 0
       );
 
       for (const txn of paymentTxns) {
@@ -147,7 +129,7 @@ async function upsertFeeLines(shop: string, token: string): Promise<void> {
           where: {
             platform_platformOrderId: {
               platform: Platform.SHOPIFY,
-              platformOrderId: txn.source_order_id.toString()
+              platformOrderId: txn.source_order_id!.toString()
             }
           },
           select: { id: true }
@@ -156,16 +138,11 @@ async function upsertFeeLines(shop: string, token: string): Promise<void> {
         if (!order) continue;
 
         await db.feeLine.upsert({
-          where: {
-            // Use balance transaction id as a stable key via a generated field name
-            // Since Prisma doesn't support upsert by non-unique without a workaround,
-            // delete and recreate per order instead.
-            id: `shopify_txn_${txn.id}`
-          },
+          where: { id: `shopify_txn_${txn.id}` },
           create: {
             id: `shopify_txn_${txn.id}`,
             orderId: order.id,
-            type: 'payment_processing',
+            type: FeeType.PAYMENT_PROCESSING,
             amountCents: toCents(txn.fee)
           },
           update: {
@@ -234,7 +211,7 @@ export async function runShopifySync(triggeredManually = false): Promise<void> {
       data: {
         finishedAt: new Date(),
         status: SyncStatus.FAILED,
-        errorSummary: message.slice(0, 500)
+        errorMessage: message.slice(0, 500)
       }
     });
   }

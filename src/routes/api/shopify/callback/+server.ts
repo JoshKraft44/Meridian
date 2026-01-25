@@ -54,16 +54,13 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
     error(502, `Token exchange failed: ${body}`);
   }
 
-  const { access_token, scope } = (await tokenRes.json()) as {
-    access_token: string;
-    scope: string;
-  };
+  const { access_token } = (await tokenRes.json()) as { access_token: string };
 
   await db.shopifyConnection.upsert({
     where: { shop },
-    create: { shop, accessToken: access_token, scopes: scope },
-    update: { accessToken: access_token, scopes: scope }
+    create: { shop, accessToken: access_token },
+    update: { accessToken: access_token }
   });
 
-  redirect(302, '/settings?connected=1');
+  redirect(302, '/?connected=1');
 };

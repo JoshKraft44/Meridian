@@ -61,9 +61,3 @@
     </div>
   </div>
 </div>
-
-<style>
-  :global(body) {
-    background-color: var(--base);
-  }
-</style>

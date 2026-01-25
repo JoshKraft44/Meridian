@@ -27,12 +27,12 @@ export const load: PageServerLoad = async ({ url }) => {
   });
 
   const [summary, timeSeries, feeBreakdown, payoutAgg, lastSync] = await Promise.all([
-    getProfitSummary(start, end, settings.excludeTaxes),
-    getRevenueTimeSeries(start, end, settings.excludeTaxes),
+    getProfitSummary(start, end, settings.excludeTaxesFromGross),
+    getRevenueTimeSeries(start, end, settings.excludeTaxesFromGross),
     getFeeBreakdown(start, end),
     db.payout.aggregate({
-      where: { date: { gte: start, lte: end } },
-      _sum: { amountCents: true }
+      where: { payoutDate: { gte: start, lte: end } },
+      _sum: { totalCents: true }
     }),
     db.syncRun.findFirst({
       where: { status: 'SUCCESS' },
@@ -48,7 +48,7 @@ export const load: PageServerLoad = async ({ url }) => {
     summary,
     timeSeries,
     feeBreakdown,
-    payoutsCents: payoutAgg._sum.amountCents ?? 0,
+    payoutsCents: payoutAgg._sum?.totalCents ?? 0,
     lastSync: lastSync?.finishedAt?.toISOString() ?? null
   };
 };

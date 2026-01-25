@@ -1,6 +1,6 @@
 import { redirect, fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
-import { checkPassword, createSessionToken } from '$lib/server/auth';
+import { validateCredentials, createSession, cookieOptions } from '$lib/server/auth';
 
 export const load: PageServerLoad = ({ locals }) => {
   if (locals.user) {
@@ -18,19 +18,13 @@ export const actions: Actions = {
       return fail(400, { message: 'Missing fields' });
     }
 
-    const valid = await checkPassword(username, password);
+    const valid = await validateCredentials(username, password);
     if (!valid) {
       return fail(401, { message: 'Invalid credentials' });
     }
 
-    const token = createSessionToken({ username });
-    cookies.set('session', token, {
-      path: '/',
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 60 * 60 * 24 * 7 // 7 days
-    });
+    const token = createSession(username);
+    cookies.set('session', token, cookieOptions);
 
     redirect(302, '/');
   }

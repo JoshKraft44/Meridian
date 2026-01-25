@@ -1,5 +1,5 @@
-import { env } from '$env/dynamic/private';
 import { createHmac } from 'crypto';
+import { env } from '$env/dynamic/private';
 
 const API_VERSION = '2025-01';
 
@@ -10,7 +10,25 @@ export interface ShopifyOrder {
   financial_status: string;
   total_price: string;
   total_tax: string;
+  total_shipping_price_set?: {
+    shop_money?: { amount: string };
+  };
   currency: string;
+  email?: string;
+  billing_address?: {
+    first_name?: string;
+    last_name?: string;
+  };
+  refunds: {
+    id: number;
+    processed_at: string;
+    transactions: {
+      id: number;
+      kind: string;
+      status: string;
+      amount: string;
+    }[];
+  }[];
   line_items: {
     id: number;
     title: string;
@@ -19,43 +37,23 @@ export interface ShopifyOrder {
   }[];
 }
 
-export interface ShopifyRefund {
+export interface ShopifyPayout {
   id: number;
-  order_id: number;
-  created_at: string;
-  refund_line_items: {
-    id: number;
-    line_item_id: number;
-    quantity: number;
-    restock_type: string;
-  }[];
-  transactions: {
-    id: number;
-    type: string;
-    amount: string;
-    currency: string;
-  }[];
-}
-
-export interface ShopyPayout {
-  id: string;
   status: string;
-  payout_details: {
-    summary: {
-      adjustments_fee_amount: string;
-      charges_fee_amount: string;
-      refunds_fee_amount: string;
-      reserved_funds_fee_amount: string;
-    };
-  };
+  amount: string;
   currency: string;
-  deposited_at: string;
+  date: string;
+  summary: {
+    adjustments_fee_amount: string;
+    charges_fee_amount: string;
+    refunds_fee_amount: string;
+  };
 }
 
 export interface ShopifyBalanceTransaction {
-  id: string;
+  id: number;
   type: string;
-  source_order_id?: string;
+  source_order_id: number | null;
   currency: string;
   amount: string;
   fee: string;
@@ -67,200 +65,100 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function* fetchAllOrders(
+async function shopifyFetch(url: string, token: string): Promise<Response> {
+  const res = await fetch(url, {
+    headers: {
+      'X-Shopify-Access-Token': token,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (res.status === 429) {
+    const retryAfter = parseInt(res.headers.get('Retry-After') || '5');
+    console.warn(`[shopify] rate limited, retrying after ${retryAfter}s`);
+    await sleep(retryAfter * 1000);
+    return shopifyFetch(url, token);
+  }
+
+  return res;
+}
+
+function getNextPageUrl(linkHeader: string): string | null {
+  const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+  return match ? match[1] : null;
+}
+
+export async function* fetchAllOrders(
+  shop: string,
   token: string,
   since?: string
 ): AsyncGenerator<ShopifyOrder[]> {
-  let cursor: string | null = null;
-  let hasNextPage = true;
-
   const query = new URLSearchParams({
     limit: '250',
-    fields: 'id,name,created_at,financial_status,total_price,total_tax,currency,line_items',
+    status: 'any',
     ...(since && { updated_at_min: since })
   });
 
-  while (hasNextPage) {
-    const url = `https://${env.SHOPIFY_SHOP}/admin/api/${API_VERSION}/orders.json?${query}`;
-    const response = await fetch(url, {
-      headers: {
-        'X-Shopify-Access-Token': token,
-        'Content-Type': 'application/json'
-      }
-    });
+  let url: string | null =
+    `https://${shop}/admin/api/${API_VERSION}/orders.json?${query}`;
 
-    if (response.status === 429) {
-      const retryAfter = parseInt(response.headers.get('Retry-After') || '5');
-      console.warn(`[shopify] rate limited, retrying after ${retryAfter}s`);
-      await sleep(retryAfter * 1000);
-      continue;
-    }
+  while (url) {
+    const res = await shopifyFetch(url, token);
+    if (!res.ok) throw new Error(`shopify api error: ${res.status}`);
 
-    if (!response.ok) {
-      throw new Error(`shopify api error: ${response.status}`);
-    }
+    const data: { orders: ShopifyOrder[] } = await res.json();
+    if (data.orders.length > 0) yield data.orders;
 
-    const data: { orders: ShopifyOrder[] } = await response.json();
-    yield data.orders;
-
-    const linkHeader = response.headers.get('Link') || '';
-    const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-    if (nextMatch) {
-      const nextUrl = new URL(nextMatch[1]);
-      cursor = nextUrl.searchParams.get('limit_key');
-      hasNextPage = !!cursor;
-    } else {
-      hasNextPage = false;
-    }
-
-    await sleep(500);
+    url = getNextPageUrl(res.headers.get('Link') || '');
+    if (url) await sleep(500);
   }
 }
 
-async function* fetchAllRefunds(token: string): AsyncGenerator<ShopifyRefund[]> {
-  let cursor: string | null = null;
-  let hasNextPage = true;
+export async function* fetchAllPayouts(
+  shop: string,
+  token: string
+): AsyncGenerator<ShopifyPayout[]> {
+  let url: string | null =
+    `https://${shop}/admin/api/${API_VERSION}/shopify_payments/payouts.json?limit=250`;
 
-  const query = new URLSearchParams({
-    limit: '250',
-    fields: 'id,order_id,created_at,refund_line_items,transactions'
-  });
+  while (url) {
+    const res = await shopifyFetch(url, token);
 
-  while (hasNextPage) {
-    const url = `https://${env.SHOPIFY_SHOP}/admin/api/${API_VERSION}/refunds.json?${query}`;
-    const response = await fetch(url, {
-      headers: {
-        'X-Shopify-Access-Token': token,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (response.status === 429) {
-      const retryAfter = parseInt(response.headers.get('Retry-After') || '5');
-      await sleep(retryAfter * 1000);
-      continue;
-    }
-
-    if (!response.ok) {
-      throw new Error(`shopify api error: ${response.status}`);
-    }
-
-    const data: { refunds: ShopifyRefund[] } = await response.json();
-    yield data.refunds;
-
-    const linkHeader = response.headers.get('Link') || '';
-    const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-    if (nextMatch) {
-      const nextUrl = new URL(nextMatch[1]);
-      cursor = nextUrl.searchParams.get('limit_key');
-      hasNextPage = !!cursor;
-    } else {
-      hasNextPage = false;
-    }
-
-    await sleep(500);
-  }
-}
-
-async function* fetchAllPayouts(token: string): AsyncGenerator<ShopyPayout[]> {
-  let cursor: string | null = null;
-  let hasNextPage = true;
-
-  const query = new URLSearchParams({
-    limit: '250'
-  });
-
-  while (hasNextPage) {
-    const url = `https://${env.SHOPIFY_SHOP}/admin/api/${API_VERSION}/shopify_payments/payouts.json?${query}`;
-    const response = await fetch(url, {
-      headers: {
-        'X-Shopify-Access-Token': token,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (response.status === 429) {
-      const retryAfter = parseInt(response.headers.get('Retry-After') || '5');
-      await sleep(retryAfter * 1000);
-      continue;
-    }
-
-    if (response.status === 403) {
+    if (res.status === 403) {
       console.warn('[shopify] Shopify Payments not available (403), skipping payouts');
       return;
     }
+    if (!res.ok) throw new Error(`shopify api error: ${res.status}`);
 
-    if (!response.ok) {
-      throw new Error(`shopify api error: ${response.status}`);
-    }
+    const data: { payouts: ShopifyPayout[] } = await res.json();
+    if (data.payouts.length > 0) yield data.payouts;
 
-    const data: { payouts: ShopyPayout[] } = await response.json();
-    yield data.payouts;
-
-    const linkHeader = response.headers.get('Link') || '';
-    const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-    if (nextMatch) {
-      const nextUrl = new URL(nextMatch[1]);
-      cursor = nextUrl.searchParams.get('limit_key');
-      hasNextPage = !!cursor;
-    } else {
-      hasNextPage = false;
-    }
-
-    await sleep(500);
+    url = getNextPageUrl(res.headers.get('Link') || '');
+    if (url) await sleep(500);
   }
 }
 
-async function* fetchAllBalanceTransactions(
-  token: string,
-  since?: string
+export async function* fetchAllBalanceTransactions(
+  shop: string,
+  token: string
 ): AsyncGenerator<ShopifyBalanceTransaction[]> {
-  let cursor: string | null = null;
-  let hasNextPage = true;
+  let url: string | null =
+    `https://${shop}/admin/api/${API_VERSION}/shopify_payments/balance/transactions.json?limit=250`;
 
-  const query = new URLSearchParams({
-    limit: '250',
-    ...(since && { created_at_min: since })
-  });
+  while (url) {
+    const res = await shopifyFetch(url, token);
 
-  while (hasNextPage) {
-    const url = `https://${env.SHOPIFY_SHOP}/admin/api/${API_VERSION}/shopify_payments/balance/transactions.json?${query}`;
-    const response = await fetch(url, {
-      headers: {
-        'X-Shopify-Access-Token': token,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (response.status === 429) {
-      const retryAfter = parseInt(response.headers.get('Retry-After') || '5');
-      await sleep(retryAfter * 1000);
-      continue;
-    }
-
-    if (response.status === 403) {
-      console.warn('[shopify] Shopify Payments not available (403), skipping balance transactions');
+    if (res.status === 403) {
+      console.warn('[shopify] Balance transactions not available (403), skipping');
       return;
     }
+    if (!res.ok) throw new Error(`shopify api error: ${res.status}`);
 
-    if (!response.ok) {
-      throw new Error(`shopify api error: ${response.status}`);
-    }
+    const data: { transactions: ShopifyBalanceTransaction[] } = await res.json();
+    if (data.transactions.length > 0) yield data.transactions;
 
-    const data: { transactions: ShopifyBalanceTransaction[] } = await response.json();
-    yield data.transactions;
-
-    const linkHeader = response.headers.get('Link') || '';
-    const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-    if (nextMatch) {
-      const nextUrl = new URL(nextMatch[1]);
-      cursor = nextUrl.searchParams.get('limit_key');
-      hasNextPage = !!cursor;
-    } else {
-      hasNextPage = false;
-    }
-
-    await sleep(500);
+    url = getNextPageUrl(res.headers.get('Link') || '');
+    if (url) await sleep(500);
   }
 }
 
@@ -270,5 +168,3 @@ export function verifyWebhookSignature(body: string, signature: string): boolean
     .digest('base64');
   return hash === signature;
 }
-
-export { fetchAllOrders, fetchAllRefunds, fetchAllPayouts, fetchAllBalanceTransactions };

@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'crypto';
-import { compare } from 'bcryptjs';
+import bcrypt from 'bcryptjs';
+const { compare } = bcrypt;
 import { env } from '$env/dynamic/private';
 
 const COOKIE_NAME = 'session';
@@ -29,7 +30,8 @@ function verify(token: string): string | null {
 
 export async function validateCredentials(username: string, password: string): Promise<boolean> {
   if (username !== env.ADMIN_USERNAME) return false;
-  return compare(password, env.ADMIN_PASSWORD_HASH);
+  const result = await compare(password, env.ADMIN_PASSWORD_HASH);
+  return result;
 }
 
 export function createSession(username: string): string {
