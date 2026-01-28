@@ -18,8 +18,10 @@
     "svelte": "^5.53.0"
   },
   "devDependencies": {
+    "@rollup/rollup-darwin-arm64": "^4.57.1",
     "@sveltejs/vite-plugin-svelte": "^4.0.4",
     "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^25.3.0",
     "autoprefixer": "^10.4.24",
     "postcss": "^8.5.6",
     "prisma": "^5.22.0",
@@ -28,5 +30,8 @@
     "typescript": "^5.9.3",
     "vite": "^5.4.21"
   },
-  "type": "module"
+  "type": "module",
+  "optionalDependencies": {
+    "@rollup/rollup-darwin-arm64": "^4.57.1"
+  }
 }
