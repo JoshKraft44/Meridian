@@ -162,6 +162,31 @@ export async function* fetchAllBalanceTransactions(
   }
 }
 
+// Fetches shipping label cost for a single order via the Events API.
+// Shopify fires a shipping_label_created_success event with cost in the message.
+export async function fetchOrderShippingLabelCost(
+  shop: string,
+  token: string,
+  orderId: string
+): Promise<number | null> {
+  const url = `https://${shop}/admin/api/${API_VERSION}/orders/${orderId}/events.json?verb=shipping_label_created_success&limit=50`;
+  const res = await shopifyFetch(url, token);
+  if (!res.ok) return null;
+
+  const data: { events: { message: string }[] } = await res.json();
+
+  let totalCents = 0;
+  for (const event of data.events) {
+    // Message format: "You purchased a shipping label for $12.50 CAD"
+    const match = event.message.match(/\$([0-9]+(?:\.[0-9]{1,2})?)/);
+    if (match) {
+      totalCents += Math.round(parseFloat(match[1]) * 100);
+    }
+  }
+
+  return totalCents > 0 ? totalCents : null;
+}
+
 export function verifyWebhookSignature(body: string, signature: string): boolean {
   const hash = createHmac('sha256', env.SHOPIFY_CLIENT_SECRET)
     .update(body, 'utf8')

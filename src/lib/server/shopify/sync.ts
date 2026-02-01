@@ -1,5 +1,5 @@
 import { db } from '$lib/db';
-import { fetchAllOrders, fetchAllPayouts, fetchAllBalanceTransactions } from './api';
+import { fetchAllOrders, fetchAllPayouts, fetchAllBalanceTransactions, fetchOrderShippingLabelCost } from './api';
 import { Platform, SyncStatus, OrderStatus, FeeType } from '@prisma/client';
 
 function toCents(amount: string): number {
@@ -117,47 +117,74 @@ async function upsertPayouts(shop: string, token: string): Promise<number> {
   return count;
 }
 
-async function upsertFeeLines(shop: string, token: string): Promise<void> {
+async function syncBalanceTransactions(shop: string, token: string): Promise<void> {
   try {
     for await (const batch of fetchAllBalanceTransactions(shop, token)) {
-      const paymentTxns = batch.filter(
-        (t) => t.type === 'payment' && t.source_order_id !== null && parseFloat(t.fee) > 0
-      );
+      for (const txn of batch) {
+        if (!txn.source_order_id) continue;
 
-      for (const txn of paymentTxns) {
+        const orderKey = {
+          platform: Platform.SHOPIFY,
+          platformOrderId: txn.source_order_id.toString()
+        };
+
         const order = await db.order.findUnique({
-          where: {
-            platform_platformOrderId: {
-              platform: Platform.SHOPIFY,
-              platformOrderId: txn.source_order_id!.toString()
-            }
-          },
+          where: { platform_platformOrderId: orderKey },
           select: { id: true }
         });
 
         if (!order) continue;
 
-        await db.feeLine.upsert({
-          where: { id: `shopify_txn_${txn.id}` },
-          create: {
-            id: `shopify_txn_${txn.id}`,
-            orderId: order.id,
-            type: FeeType.PAYMENT_PROCESSING,
-            amountCents: toCents(txn.fee)
-          },
-          update: {
-            amountCents: toCents(txn.fee)
-          }
-        });
+        if (txn.type === 'charge' && parseFloat(txn.fee) > 0) {
+          await db.feeLine.upsert({
+            where: { id: `shopify_txn_${txn.id}` },
+            create: {
+              id: `shopify_txn_${txn.id}`,
+              orderId: order.id,
+              type: FeeType.PAYMENT_PROCESSING,
+              amountCents: toCents(txn.fee)
+            },
+            update: {
+              amountCents: toCents(txn.fee)
+            }
+          });
+        }
+
       }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (message.includes('403')) {
-      console.warn('[sync] Balance transactions not accessible — skipping fee lines');
+      console.warn('[sync] Balance transactions not accessible — skipping fees/shipping costs');
     } else {
       throw err;
     }
+  }
+}
+
+async function syncShippingLabelCosts(shop: string, token: string): Promise<void> {
+  try {
+    const orders = await db.order.findMany({
+      where: { platform: Platform.SHOPIFY, shippingCostCents: null },
+      select: { platformOrderId: true }
+    });
+
+    let matched = 0;
+    for (const order of orders) {
+      const costCents = await fetchOrderShippingLabelCost(shop, token, order.platformOrderId);
+      if (costCents !== null) {
+        await db.order.updateMany({
+          where: { platform: Platform.SHOPIFY, platformOrderId: order.platformOrderId },
+          data: { shippingCostCents: costCents }
+        });
+        matched++;
+      }
+    }
+
+    console.log(`[sync] shipping labels: ${orders.length} orders checked, ${matched} costs found`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('[sync] shipping label sync failed:', message);
   }
 }
 
@@ -189,7 +216,8 @@ export async function runShopifySync(triggeredManually = false): Promise<void> {
       upsertPayouts(connection.shop, connection.accessToken)
     ]);
 
-    await upsertFeeLines(connection.shop, connection.accessToken);
+    await syncBalanceTransactions(connection.shop, connection.accessToken);
+    await syncShippingLabelCosts(connection.shop, connection.accessToken);
 
     await db.syncRun.update({
       where: { id: runRecord.id },

@@ -4,7 +4,7 @@ import { env } from '$env/dynamic/private';
 import { env as pubEnv } from '$env/dynamic/public';
 import { createHmac } from 'crypto';
 
-const SCOPES = 'read_orders,read_finances,read_shipping';
+const SCOPES = 'read_fulfillments,read_inventory,read_orders,read_products,read_shipping,read_shopify_payments_accounts,read_shopify_payments_payouts';
 
 export const GET: RequestHandler = async ({ url, cookies, locals }) => {
   if (!locals.user) error(401, 'Unauthorized');
