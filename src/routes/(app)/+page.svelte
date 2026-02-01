@@ -1,5 +1,8 @@
 <script lang="ts">
   import type { PageData } from './$types';
+  import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
+  import type { PlatformFilter } from '$lib/types';
   import KpiCard from '$lib/components/KpiCard.svelte';
   import SecondaryTile from '$lib/components/SecondaryTile.svelte';
   import DateRangePicker from '$lib/components/DateRangePicker.svelte';
@@ -11,6 +14,22 @@
 
   let syncing = $state(false);
   let syncMessage = $state('');
+
+  const platforms: { label: string; value: PlatformFilter }[] = [
+    { label: 'All', value: 'all' },
+    { label: 'Shopify', value: 'shopify' },
+    { label: 'Etsy', value: 'etsy' }
+  ];
+
+  function selectPlatform(value: PlatformFilter) {
+    const url = new URL($page.url);
+    if (value === 'all') {
+      url.searchParams.delete('platform');
+    } else {
+      url.searchParams.set('platform', value);
+    }
+    goto(url.toString(), { keepFocus: true });
+  }
 
   async function syncNow() {
     syncing = true;
@@ -47,7 +66,21 @@
         {/if}
       </div>
 
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex items-center gap-1.5">
+          {#each platforms as p}
+            <button
+              onclick={() => selectPlatform(p.value)}
+              class="px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150
+                {data.platform === p.value
+                  ? 'text-white accent-bg'
+                  : 'text-text-secondary bg-elevated border border-border hover:border-border-hover hover:text-text-primary'}"
+            >
+              {p.label}
+            </button>
+          {/each}
+        </div>
+        <div class="w-px h-5 bg-border"></div>
         <DateRangePicker current={data.preset} />
         <button
           onclick={syncNow}

@@ -1,11 +1,13 @@
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/db';
+import { Platform } from '@prisma/client';
 import { getProfitSummary, getRevenueTimeSeries, getFeeBreakdown } from '$lib/server/profit';
 import { getPresetRange } from '$lib/utils';
-import type { DatePreset } from '$lib/types';
+import type { DatePreset, PlatformFilter } from '$lib/types';
 
 export const load: PageServerLoad = async ({ url }) => {
   const preset = (url.searchParams.get('range') ?? 'thisMonth') as DatePreset;
+  const platform = (url.searchParams.get('platform') ?? 'all') as PlatformFilter;
   const customStart = url.searchParams.get('start');
   const customEnd = url.searchParams.get('end');
 
@@ -26,12 +28,16 @@ export const load: PageServerLoad = async ({ url }) => {
     update: {}
   });
 
+  const payoutPlatformWhere = platform === 'all'
+    ? {}
+    : { platform: platform === 'shopify' ? Platform.SHOPIFY : Platform.ETSY };
+
   const [summary, timeSeries, feeBreakdown, payoutAgg, lastSync] = await Promise.all([
-    getProfitSummary(start, end, settings.excludeTaxesFromGross),
-    getRevenueTimeSeries(start, end, settings.excludeTaxesFromGross),
-    getFeeBreakdown(start, end),
+    getProfitSummary(start, end, settings.excludeTaxesFromGross, platform),
+    getRevenueTimeSeries(start, end, settings.excludeTaxesFromGross, platform),
+    getFeeBreakdown(start, end, platform),
     db.payout.aggregate({
-      where: { payoutDate: { gte: start, lte: end } },
+      where: { payoutDate: { gte: start, lte: end }, ...payoutPlatformWhere },
       _sum: { totalCents: true }
     }),
     db.syncRun.findFirst({
@@ -43,6 +49,7 @@ export const load: PageServerLoad = async ({ url }) => {
 
   return {
     preset,
+    platform,
     customStart: customStart ?? '',
     customEnd: customEnd ?? '',
     summary,

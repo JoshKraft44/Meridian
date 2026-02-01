@@ -1,4 +1,6 @@
 import { db } from '$lib/db';
+import type { PlatformFilter } from '$lib/types';
+import { Platform } from '@prisma/client';
 
 export interface ProfitSummary {
   ordersCount: number;
@@ -25,14 +27,23 @@ export interface FeeBreakdown {
   totalCents: number;
 }
 
+function platformWhere(platform: PlatformFilter) {
+  if (platform === 'all') return {};
+  return { platform: platform === 'shopify' ? Platform.SHOPIFY : Platform.ETSY };
+}
+
 export async function getProfitSummary(
   start: Date,
   end: Date,
-  excludeTaxes: boolean
+  excludeTaxes: boolean,
+  platform: PlatformFilter = 'all'
 ): Promise<ProfitSummary> {
+  const orderWhere = { orderDate: { gte: start, lte: end }, ...platformWhere(platform) };
+  const orderRelWhere = { order: orderWhere };
+
   const [orders, feeAgg, refundAgg, expenseAgg] = await Promise.all([
     db.order.findMany({
-      where: { orderDate: { gte: start, lte: end } },
+      where: orderWhere,
       select: {
         grossRevenueCents: true,
         shippingChargedCents: true,
@@ -41,11 +52,11 @@ export async function getProfitSummary(
       }
     }),
     db.feeLine.aggregate({
-      where: { order: { orderDate: { gte: start, lte: end } } },
+      where: orderRelWhere,
       _sum: { amountCents: true }
     }),
     db.refund.aggregate({
-      where: { order: { orderDate: { gte: start, lte: end } } },
+      where: orderRelWhere,
       _sum: { amountCents: true }
     }),
     db.expenseEvent.aggregate({
@@ -87,10 +98,11 @@ export async function getProfitSummary(
 export async function getRevenueTimeSeries(
   start: Date,
   end: Date,
-  excludeTaxes: boolean
+  excludeTaxes: boolean,
+  platform: PlatformFilter = 'all'
 ): Promise<DayBucket[]> {
   const orders = await db.order.findMany({
-    where: { orderDate: { gte: start, lte: end } },
+    where: { orderDate: { gte: start, lte: end }, ...platformWhere(platform) },
     select: {
       orderDate: true,
       grossRevenueCents: true,
@@ -126,10 +138,14 @@ export async function getRevenueTimeSeries(
   return Array.from(buckets.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export async function getFeeBreakdown(start: Date, end: Date): Promise<FeeBreakdown[]> {
+export async function getFeeBreakdown(
+  start: Date,
+  end: Date,
+  platform: PlatformFilter = 'all'
+): Promise<FeeBreakdown[]> {
   const rows = await db.feeLine.groupBy({
     by: ['type'],
-    where: { order: { orderDate: { gte: start, lte: end } } },
+    where: { order: { orderDate: { gte: start, lte: end }, ...platformWhere(platform) } },
     _sum: { amountCents: true },
     orderBy: { _sum: { amountCents: 'desc' } }
   });
