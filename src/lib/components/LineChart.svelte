@@ -8,10 +8,10 @@
   let canvas: HTMLCanvasElement;
 
   onMount(async () => {
-    const { Chart, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Filler } =
+    const { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Filler } =
       await import('chart.js');
 
-    Chart.register(LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Filler);
+    Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Filler);
 
     const accent =
       getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#c0392b';
