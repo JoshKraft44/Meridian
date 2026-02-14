@@ -16,10 +16,13 @@
   let syncMessage = $state('');
 
   const platforms: { label: string; value: PlatformFilter }[] = [
-    { label: 'All', value: 'all' },
+    { label: 'All stores', value: 'all' },
     { label: 'Shopify', value: 'shopify' },
     { label: 'Etsy', value: 'etsy' }
   ];
+
+  let storeOpen = $state(false);
+  let storeDropdown = $state<HTMLDivElement>();
 
   function selectPlatform(value: PlatformFilter) {
     const url = new URL($page.url);
@@ -28,8 +31,19 @@
     } else {
       url.searchParams.set('platform', value);
     }
+    storeOpen = false;
     goto(url.toString(), { keepFocus: true });
   }
+
+  function handleStoreClickOutside(e: MouseEvent) {
+    if (storeDropdown && !storeDropdown.contains(e.target as Node)) {
+      storeOpen = false;
+    }
+  }
+
+  const activePlatformLabel = $derived(
+    platforms.find((p) => p.value === data.platform)?.label ?? 'All stores'
+  );
 
   async function syncNow() {
     syncing = true;
@@ -47,6 +61,8 @@
 
   const { summary } = $derived(data);
 </script>
+
+<svelte:document onclick={handleStoreClickOutside} />
 
 <svelte:head>
   <title>Dashboard — Meridian</title>
@@ -66,22 +82,37 @@
         {/if}
       </div>
 
-      <div class="flex items-center gap-3 flex-wrap">
-        <div class="flex items-center gap-1.5">
-          {#each platforms as p}
-            <button
-              onclick={() => selectPlatform(p.value)}
-              class="px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150
-                {data.platform === p.value
-                  ? 'text-white accent-bg'
-                  : 'text-text-secondary bg-elevated border border-border hover:border-border-hover hover:text-text-primary'}"
-            >
-              {p.label}
-            </button>
-          {/each}
+      <div class="flex items-center gap-2">
+        <!-- Store dropdown -->
+        <div class="relative" bind:this={storeDropdown}>
+          <button
+            onclick={() => (storeOpen = !storeOpen)}
+            class="btn-outline text-xs inline-flex items-center gap-1.5"
+          >
+            {activePlatformLabel}
+            <svg class="w-3 h-3 text-text-muted" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+            </svg>
+          </button>
+          {#if storeOpen}
+            <div class="absolute right-0 top-full mt-1.5 z-50 w-40 rounded-lg bg-elevated border border-border shadow-lg py-1">
+              {#each platforms as p}
+                <button
+                  onclick={() => selectPlatform(p.value)}
+                  class="w-full text-left px-3 py-1.5 text-xs transition-colors duration-100
+                    {data.platform === p.value
+                      ? 'text-white accent-bg'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-base'}"
+                >
+                  {p.label}
+                </button>
+              {/each}
+            </div>
+          {/if}
         </div>
-        <div class="w-px h-5 bg-border"></div>
+
         <DateRangePicker current={data.preset} />
+
         <button
           onclick={syncNow}
           disabled={syncing}

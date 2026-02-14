@@ -65,6 +65,13 @@ export function getPresetRange(preset: DatePreset): { start: Date; end: Date } {
   end.setMilliseconds(-1);
 
   switch (preset) {
+    case 'today':
+      return { start: today, end };
+    case 'last7': {
+      const start = new Date(today);
+      start.setDate(today.getDate() - 6);
+      return { start, end };
+    }
     case 'thisWeek': {
       const dayOfWeek = today.getDay(); // 0 = Sunday
       const start = new Date(today);
@@ -78,6 +85,19 @@ export function getPresetRange(preset: DatePreset): { start: Date; end: Date } {
     case 'last30': {
       const start = new Date(today);
       start.setDate(today.getDate() - 29);
+      return { start, end };
+    }
+    case 'ytd': {
+      const start = new Date(`${todayStr.slice(0, 4)}-01-01T00:00:00-07:00`);
+      return { start, end };
+    }
+    case 'lastYear': {
+      const start = new Date(today);
+      start.setDate(today.getDate() - 364);
+      return { start, end };
+    }
+    case 'allTime': {
+      const start = new Date('2020-01-01T00:00:00-07:00');
       return { start, end };
     }
     default:
