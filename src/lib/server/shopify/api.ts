@@ -96,7 +96,9 @@ export async function* fetchAllOrders(
   const query = new URLSearchParams({
     limit: '250',
     status: 'any',
-    ...(since && { updated_at_min: since })
+    ...(since
+      ? { updated_at_min: since }
+      : { created_at_min: '2020-01-01T00:00:00Z' }) // Shopify only returns last 60 days by default
   });
 
   let url: string | null =
