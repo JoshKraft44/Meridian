@@ -36,7 +36,7 @@
     <form method="POST" action="?/create" use:enhance class="card p-5 space-y-4">
       <h2 class="text-sm font-semibold text-text-primary">Add expense</h2>
 
-      <div class="grid grid-cols-4 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <div class="space-y-1">
           <label for="date" class="text-xs text-text-secondary">Date</label>
           <input

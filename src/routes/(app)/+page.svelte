@@ -85,9 +85,17 @@
         <button
           onclick={syncNow}
           disabled={syncing}
-          class="btn-outline text-xs"
+          class="btn-outline text-xs inline-flex items-center gap-1.5"
         >
-          {syncing ? 'Syncing…' : 'Sync now'}
+          {#if syncing}
+            <svg class="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" class="opacity-25" />
+              <path d="M4 12a8 8 0 018-8" stroke="currentColor" stroke-width="3" stroke-linecap="round" class="opacity-75" />
+            </svg>
+            Syncing…
+          {:else}
+            Sync now
+          {/if}
         </button>
       </div>
     </div>

@@ -5,85 +5,105 @@
 
   let { data }: { data: DayBucket[] } = $props();
 
-  let canvas: HTMLCanvasElement;
+  let canvas = $state<HTMLCanvasElement>();
+  let ChartCtor: any = null;
+  let chart: any = null;
 
-  onMount(async () => {
-    const { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Filler } =
-      await import('chart.js');
+  onMount(() => {
+    import('chart.js').then(({ Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Filler }) => {
+      Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Filler);
+      ChartCtor = Chart;
+    });
+  });
 
-    Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Filler);
+  $effect(() => {
+    return () => chart?.destroy();
+  });
+
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { intersect: false, mode: 'index' as const },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#18181b',
+        borderColor: '#27272a',
+        borderWidth: 1,
+        padding: 10,
+        titleColor: '#a1a1aa',
+        bodyColor: '#fafafa',
+        callbacks: {
+          label: (ctx: any) =>
+            ` ${ctx.dataset.label}: ${formatCents(Math.round((ctx.raw as number) * 100))}`
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: { color: '#27272a' },
+        ticks: { color: '#52525b', maxTicksLimit: 8, font: { size: 11 } },
+        border: { display: false }
+      },
+      y: {
+        grid: { color: '#27272a' },
+        ticks: {
+          color: '#52525b',
+          font: { size: 11 },
+          callback: (v: any) => `$${Number(v).toFixed(0)}`
+        },
+        border: { display: false }
+      }
+    }
+  };
+
+  $effect(() => {
+    if (!ChartCtor || !canvas || data.length === 0) return;
 
     const accent =
       getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#c0392b';
+    const labels = data.map((d) => formatDateShort(d.date));
+    const gross = data.map((d) => d.grossCents / 100);
+    const net = data.map((d) => d.netCents / 100);
 
-    const chart = new Chart(canvas, {
-      type: 'line',
-      data: {
-        labels: data.map((d) => formatDateShort(d.date)),
-        datasets: [
-          {
-            label: 'Gross',
-            data: data.map((d) => d.grossCents / 100),
-            borderColor: accent,
-            backgroundColor: `${accent}18`,
-            borderWidth: 2,
-            pointRadius: 0,
-            pointHoverRadius: 4,
-            tension: 0.3,
-            fill: true
-          },
-          {
-            label: 'Net',
-            data: data.map((d) => d.netCents / 100),
-            borderColor: '#10b981',
-            backgroundColor: 'rgba(16,185,129,0.06)',
-            borderWidth: 2,
-            pointRadius: 0,
-            pointHoverRadius: 4,
-            tension: 0.3,
-            fill: true
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { intersect: false, mode: 'index' },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: '#18181b',
-            borderColor: '#27272a',
-            borderWidth: 1,
-            padding: 10,
-            titleColor: '#a1a1aa',
-            bodyColor: '#fafafa',
-            callbacks: {
-              label: (ctx) =>
-                ` ${ctx.dataset.label}: ${formatCents(Math.round((ctx.raw as number) * 100))}`
-            }
-          }
-        },
-        scales: {
-          x: {
-            grid: { color: '#27272a' },
-            ticks: { color: '#52525b', maxTicksLimit: 8, font: { size: 11 } },
-            border: { display: false }
-          },
-          y: {
-            grid: { color: '#27272a' },
-            ticks: {
-              color: '#52525b',
-              font: { size: 11 },
-              callback: (v) => `$${Number(v).toFixed(0)}`
+    if (chart) {
+      chart.data.labels = labels;
+      chart.data.datasets[0].data = gross;
+      chart.data.datasets[1].data = net;
+      chart.update();
+    } else {
+      chart = new ChartCtor(canvas, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Gross',
+              data: gross,
+              borderColor: accent,
+              backgroundColor: `${accent}18`,
+              borderWidth: 2,
+              pointRadius: 0,
+              pointHoverRadius: 4,
+              tension: 0.3,
+              fill: true
             },
-            border: { display: false }
-          }
-        }
-      }
-    });
-
-    return () => chart.destroy();
+            {
+              label: 'Net',
+              data: net,
+              borderColor: '#10b981',
+              backgroundColor: 'rgba(16,185,129,0.06)',
+              borderWidth: 2,
+              pointRadius: 0,
+              pointHoverRadius: 4,
+              tension: 0.3,
+              fill: true
+            }
+          ]
+        },
+        options: chartOptions
+      });
+    }
   });
 </script>
 

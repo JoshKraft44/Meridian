@@ -49,7 +49,7 @@
         </div>
 
         {#if error}
-          <div class="text-sm text-red-400 bg-red-950/20 rounded border border-red-900/20 p-2">
+          <div class="text-sm text-negative bg-negative/10 rounded border border-negative/20 p-2">
             {error}
           </div>
         {/if}
