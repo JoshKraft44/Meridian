@@ -1,6 +1,6 @@
 import { db } from '$lib/db';
 import type { PlatformFilter } from '$lib/types';
-import { Platform } from '@prisma/client';
+import { Platform, BillingFrequency } from '@prisma/client';
 
 export interface ProfitSummary {
   ordersCount: number;
@@ -13,6 +13,7 @@ export interface ProfitSummary {
   taxesCents: number;
   totalRefundsCents: number;
   totalExpensesCents: number;
+  subscriptionCostCents: number;
   missingShippingCostCount: number;
 }
 
@@ -22,14 +23,41 @@ export interface DayBucket {
   netCents: number;
 }
 
-export interface FeeBreakdown {
-  type: string;
-  totalCents: number;
-}
-
 function platformWhere(platform: PlatformFilter) {
   if (platform === 'all') return {};
   return { platform: platform === 'shopify' ? Platform.SHOPIFY : Platform.ETSY };
+}
+
+function subscriptionPlatformWhere(platform: PlatformFilter) {
+  if (platform === 'all') return {};
+  // include subs that match the platform OR have no platform (general)
+  return { OR: [{ platform: platform === 'shopify' ? Platform.SHOPIFY : Platform.ETSY }, { platform: null }] };
+}
+
+async function getSubscriptionCostCents(start: Date, end: Date, platform: PlatformFilter = 'all'): Promise<number> {
+  const subs = await db.subscription.findMany({
+    where: {
+      startDate: { lte: end },
+      AND: [
+        { OR: [{ endDate: null }, { endDate: { gte: start } }] },
+        ...( platform === 'all' ? [] : [subscriptionPlatformWhere(platform)] )
+      ]
+    }
+  });
+
+  let total = 0;
+  for (const sub of subs) {
+    const stepMonths = sub.frequency === BillingFrequency.MONTHLY ? 1 : 12;
+    const cursor = new Date(sub.startDate);
+
+    while (cursor <= end) {
+      if (cursor >= start && (!sub.endDate || cursor <= sub.endDate)) {
+        total += sub.amountCents;
+      }
+      cursor.setMonth(cursor.getMonth() + stepMonths);
+    }
+  }
+  return total;
 }
 
 export async function getProfitSummary(
@@ -41,7 +69,7 @@ export async function getProfitSummary(
   const orderWhere = { orderDate: { gte: start, lte: end }, ...platformWhere(platform) };
   const orderRelWhere = { order: orderWhere };
 
-  const [orders, feeAgg, refundAgg, expenseAgg] = await Promise.all([
+  const [orders, feeAgg, refundAgg, expenseAgg, subscriptionCostCents] = await Promise.all([
     db.order.findMany({
       where: orderWhere,
       select: {
@@ -62,7 +90,8 @@ export async function getProfitSummary(
     db.expenseEvent.aggregate({
       where: { eventDate: { gte: start, lte: end } },
       _sum: { amountCents: true }
-    })
+    }),
+    getSubscriptionCostCents(start, end, platform)
   ]);
 
   const grossRevenueCents = orders.reduce((s, o) => s + o.grossRevenueCents, 0);
@@ -78,7 +107,7 @@ export async function getProfitSummary(
   const grossProfitCents = excludeTaxes ? grossRevenueCents - taxesCents : grossRevenueCents;
 
   const netProfitCents =
-    grossProfitCents - totalFeesCents - shippingCostCents - totalRefundsCents - totalExpensesCents;
+    grossProfitCents - totalFeesCents - shippingCostCents - totalRefundsCents - totalExpensesCents - subscriptionCostCents;
 
   return {
     ordersCount: orders.length,
@@ -91,6 +120,7 @@ export async function getProfitSummary(
     taxesCents,
     totalRefundsCents,
     totalExpensesCents,
+    subscriptionCostCents,
     missingShippingCostCount
   };
 }
@@ -138,20 +168,46 @@ export async function getRevenueTimeSeries(
   return Array.from(buckets.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export async function getFeeBreakdown(
+export interface CostBreakdown {
+  label: string;
+  totalCents: number;
+}
+
+export async function getCostBreakdown(
   start: Date,
   end: Date,
   platform: PlatformFilter = 'all'
-): Promise<FeeBreakdown[]> {
-  const rows = await db.feeLine.groupBy({
-    by: ['type'],
-    where: { order: { orderDate: { gte: start, lte: end }, ...platformWhere(platform) } },
-    _sum: { amountCents: true },
-    orderBy: { _sum: { amountCents: 'desc' } }
-  });
+): Promise<CostBreakdown[]> {
+  const [feeRows, expenseRows, subscriptionCents] = await Promise.all([
+    db.feeLine.groupBy({
+      by: ['type'],
+      where: { order: { orderDate: { gte: start, lte: end }, ...platformWhere(platform) } },
+      _sum: { amountCents: true },
+      orderBy: { _sum: { amountCents: 'desc' } }
+    }),
+    db.expenseEvent.groupBy({
+      by: ['category'],
+      where: { eventDate: { gte: start, lte: end } },
+      _sum: { amountCents: true }
+    }),
+    getSubscriptionCostCents(start, end, platform)
+  ]);
 
-  return rows.map((r) => ({
-    type: r.type,
-    totalCents: r._sum.amountCents ?? 0
-  }));
+  const items: CostBreakdown[] = [];
+
+  for (const r of feeRows) {
+    items.push({ label: r.type.replace(/_/g, ' '), totalCents: r._sum.amountCents ?? 0 });
+  }
+
+  for (const r of expenseRows) {
+    const label = r.category.charAt(0) + r.category.slice(1).toLowerCase();
+    items.push({ label, totalCents: r._sum.amountCents ?? 0 });
+  }
+
+  if (subscriptionCents > 0) {
+    items.push({ label: 'Subscriptions', totalCents: subscriptionCents });
+  }
+
+  items.sort((a, b) => b.totalCents - a.totalCents);
+  return items;
 }

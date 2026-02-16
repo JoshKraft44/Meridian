@@ -157,7 +157,7 @@
     </div>
 
     <!-- Secondary tiles -->
-    <div class="grid grid-cols-3 gap-3 sm:grid-cols-6">
+    <div class="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-8">
       <SecondaryTile label="Revenue" cents={summary.grossRevenueCents} />
       <SecondaryTile label="Fees" cents={summary.totalFeesCents} />
       <SecondaryTile
@@ -170,6 +170,8 @@
         note={summary.missingShippingCostCount > 0 ? `${summary.missingShippingCostCount} unknown` : ''}
       />
       <SecondaryTile label="Taxes" cents={summary.taxesCents} />
+      <SecondaryTile label="Expenses" cents={summary.totalExpensesCents} />
+      <SecondaryTile label="Subscriptions" cents={summary.subscriptionCostCents} />
       <SecondaryTile label="Payouts" cents={data.payoutsCents} />
     </div>
 
@@ -179,7 +181,7 @@
         <LineChart data={data.timeSeries} />
       </div>
       <div>
-        <BarChart data={data.feeBreakdown} />
+        <BarChart data={data.costBreakdown} />
       </div>
     </div>
 

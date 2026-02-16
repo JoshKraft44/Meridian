@@ -6,7 +6,7 @@
   let { data }: { data: DayBucket[] } = $props();
 
   let canvas = $state<HTMLCanvasElement>();
-  let ChartCtor: any = null;
+  let ChartCtor = $state<any>(null);
   let chart: any = null;
 
   onMount(() => {
@@ -14,10 +14,7 @@
       Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Filler);
       ChartCtor = Chart;
     });
-  });
-
-  $effect(() => {
-    return () => chart?.destroy();
+    return () => { chart?.destroy(); chart = null; };
   });
 
   const chartOptions = {

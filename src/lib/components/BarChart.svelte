@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { FeeBreakdown } from '$lib/server/profit';
+  import type { CostBreakdown } from '$lib/server/profit';
   import { formatCents } from '$lib/utils';
 
-  let { data }: { data: FeeBreakdown[] } = $props();
+  let { data }: { data: CostBreakdown[] } = $props();
 
   let canvas = $state<HTMLCanvasElement>();
-  let ChartCtor: any = null;
+  let ChartCtor = $state<any>(null);
   let chart: any = null;
 
   onMount(() => {
@@ -14,10 +14,7 @@
       Chart.register(BarController, BarElement, LinearScale, CategoryScale, Tooltip);
       ChartCtor = Chart;
     });
-  });
-
-  $effect(() => {
-    return () => chart?.destroy();
+    return () => { chart?.destroy(); chart = null; };
   });
 
   const chartOptions = {
@@ -60,7 +57,7 @@
 
     const accent =
       getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#c0392b';
-    const labels = data.map((d) => d.type.replace(/_/g, ' '));
+    const labels = data.map((d) => d.label);
     const values = data.map((d) => d.totalCents / 100);
 
     if (chart) {
@@ -89,10 +86,10 @@
 </script>
 
 <div class="card p-5">
-  <p class="text-xs font-medium text-text-muted uppercase tracking-widest mb-4">Fees by type</p>
+  <p class="text-xs font-medium text-text-muted uppercase tracking-widest mb-4">Cost breakdown</p>
 
   {#if data.length === 0}
-    <div class="h-44 flex items-center justify-center text-sm text-text-muted">No fee data for this period</div>
+    <div class="h-44 flex items-center justify-center text-sm text-text-muted">No cost data for this period</div>
   {:else}
     <div class="h-44">
       <canvas bind:this={canvas}></canvas>

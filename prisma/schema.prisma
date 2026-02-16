@@ -32,6 +32,11 @@ enum ExpenseCategoryType {
   OTHER
 }
 
+enum BillingFrequency {
+  MONTHLY
+  ANNUALLY
+}
+
 enum SyncStatus {
   RUNNING
   SUCCESS
@@ -120,6 +125,22 @@ model ExpenseEvent {
 
   @@index([eventDate])
   @@index([category])
+}
+
+model Subscription {
+  id          String           @id @default(cuid())
+  name        String
+  amountCents Int
+  frequency   BillingFrequency
+  platform    Platform?
+  startDate   DateTime
+  endDate     DateTime?
+  notes       String?
+
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([startDate])
 }
 
 model SyncRun {

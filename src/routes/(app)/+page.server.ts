@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/db';
 import { Platform } from '@prisma/client';
-import { getProfitSummary, getRevenueTimeSeries, getFeeBreakdown } from '$lib/server/profit';
+import { getProfitSummary, getRevenueTimeSeries, getCostBreakdown } from '$lib/server/profit';
 import { getPresetRange } from '$lib/utils';
 import type { DatePreset, PlatformFilter } from '$lib/types';
 
@@ -32,10 +32,10 @@ export const load: PageServerLoad = async ({ url }) => {
     ? {}
     : { platform: platform === 'shopify' ? Platform.SHOPIFY : Platform.ETSY };
 
-  const [summary, timeSeries, feeBreakdown, payoutAgg, lastSync] = await Promise.all([
+  const [summary, timeSeries, costBreakdown, payoutAgg, lastSync] = await Promise.all([
     getProfitSummary(start, end, settings.excludeTaxesFromGross, platform),
     getRevenueTimeSeries(start, end, settings.excludeTaxesFromGross, platform),
-    getFeeBreakdown(start, end, platform),
+    getCostBreakdown(start, end, platform),
     db.payout.aggregate({
       where: { payoutDate: { gte: start, lte: end }, ...payoutPlatformWhere },
       _sum: { totalCents: true }
@@ -54,7 +54,7 @@ export const load: PageServerLoad = async ({ url }) => {
     customEnd: customEnd ?? '',
     summary,
     timeSeries,
-    feeBreakdown,
+    costBreakdown,
     payoutsCents: payoutAgg._sum?.totalCents ?? 0,
     lastSync: lastSync?.finishedAt?.toISOString() ?? null
   };
