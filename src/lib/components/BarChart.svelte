@@ -89,9 +89,9 @@
   <p class="text-xs font-medium text-text-muted uppercase tracking-widest mb-4">Cost breakdown</p>
 
   {#if data.length === 0}
-    <div class="h-44 flex items-center justify-center text-sm text-text-muted">No cost data for this period</div>
+    <div class="h-52 flex items-center justify-center text-sm text-text-muted">No cost data for this period</div>
   {:else}
-    <div class="h-44">
+    <div class="h-52">
       <canvas bind:this={canvas}></canvas>
     </div>
   {/if}

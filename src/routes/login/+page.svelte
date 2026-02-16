@@ -14,11 +14,13 @@
         method="POST"
         use:enhance={() => {
           loading = true;
-          return async ({ result }) => {
+          return async ({ result, update }) => {
             if (result.type === 'failure') {
               error = 'Invalid username or password';
+              loading = false;
+            } else {
+              await update();
             }
-            loading = false;
           };
         }}
         class="space-y-4"

@@ -30,7 +30,9 @@ function verify(token: string): string | null {
 
 export async function validateCredentials(username: string, password: string): Promise<boolean> {
   if (username !== env.ADMIN_USERNAME) return false;
-  const result = await compare(password, env.ADMIN_PASSWORD_HASH);
+  // process.env used here because Vite's $env mangles bcrypt hashes containing $
+  const hash = process.env.ADMIN_PASSWORD_HASH ?? '';
+  const result = await compare(password, hash);
   return result;
 }
 

@@ -105,21 +105,23 @@
 </script>
 
 <div class="card p-5">
-  <p class="text-xs font-medium text-text-muted uppercase tracking-widest mb-4">Revenue over time</p>
-
-  {#if data.length === 0}
-    <div class="h-52 flex items-center justify-center text-sm text-text-muted">No data for this period</div>
-  {:else}
-    <div class="h-52">
-      <canvas bind:this={canvas}></canvas>
-    </div>
-    <div class="flex items-center gap-5 mt-3">
+  <div class="flex items-center justify-between mb-4">
+    <p class="text-xs font-medium text-text-muted uppercase tracking-widest">Revenue over time</p>
+    <div class="flex items-center gap-4">
       <span class="flex items-center gap-1.5 text-xs text-text-secondary">
         <span class="w-3 h-0.5 rounded accent-bg inline-block"></span>Gross
       </span>
       <span class="flex items-center gap-1.5 text-xs text-text-secondary">
         <span class="w-3 h-0.5 rounded bg-positive inline-block"></span>Net
       </span>
+    </div>
+  </div>
+
+  {#if data.length === 0}
+    <div class="h-52 flex items-center justify-center text-sm text-text-muted">No data for this period</div>
+  {:else}
+    <div class="h-52">
+      <canvas bind:this={canvas}></canvas>
     </div>
   {/if}
 </div>
