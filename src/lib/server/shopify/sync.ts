@@ -1,5 +1,5 @@
 import { db } from '$lib/db';
-import { fetchAllOrders, fetchAllPayouts, fetchAllBalanceTransactions, fetchOrderShippingLabelCost } from './api';
+import { fetchAllOrders, fetchAllPayouts, fetchAllBalanceTransactions, fetchOrderShippingLabelCost, fetchAllProducts } from './api';
 import { Platform, SyncStatus, OrderStatus, FeeType } from '@prisma/client';
 
 function toCents(amount: string): number {
@@ -22,16 +22,43 @@ async function upsertOrders(shop: string, token: string, since?: string): Promis
 
   for await (const batch of fetchAllOrders(shop, token, since)) {
     for (const raw of batch) {
+      const customerName = [raw.customer?.first_name, raw.customer?.last_name]
+        .filter(Boolean).join(' ') || null;
+
       const orderData = {
         platform: Platform.SHOPIFY,
         platformOrderId: raw.id.toString(),
+        orderName: raw.name || null,
         orderDate: new Date(raw.created_at),
         grossRevenueCents: toCents(raw.total_price),
+        subtotalPriceCents: toCents(raw.subtotal_price),
+        totalDiscountsCents: toCents(raw.total_discounts),
         shippingChargedCents: toCents(
           raw.total_shipping_price_set?.shop_money?.amount ?? '0'
         ),
         taxesCents: toCents(raw.total_tax),
-        status: mapOrderStatus(raw.financial_status)
+        status: mapOrderStatus(raw.financial_status),
+        customerName,
+        customerEmail: raw.customer?.email || raw.email || null,
+        customerPhone: raw.customer?.phone || null,
+        shippingName: raw.shipping_address?.name || null,
+        shippingAddress1: raw.shipping_address?.address1 || null,
+        shippingAddress2: raw.shipping_address?.address2 || null,
+        shippingCity: raw.shipping_address?.city || null,
+        shippingProvince: raw.shipping_address?.province || null,
+        shippingProvinceCode: raw.shipping_address?.province_code || null,
+        shippingZip: raw.shipping_address?.zip || null,
+        shippingCountry: raw.shipping_address?.country || null,
+        shippingCountryCode: raw.shipping_address?.country_code || null,
+        fulfillmentStatus: raw.fulfillment_status || null,
+        note: raw.note || null,
+        tags: raw.tags || null,
+        cancelReason: raw.cancel_reason || null,
+        cancelledAt: raw.cancelled_at ? new Date(raw.cancelled_at) : null,
+        closedAt: raw.closed_at ? new Date(raw.closed_at) : null,
+        discountCodes: raw.discount_codes && raw.discount_codes.length > 0
+          ? raw.discount_codes : undefined,
+        paymentGateway: raw.payment_gateway_names?.[0] || null
       };
 
       const order = await db.order.upsert({
@@ -63,6 +90,26 @@ async function upsertOrders(shop: string, token: string, since?: string): Promis
         if (refundRows.length > 0) {
           await db.refund.createMany({ data: refundRows });
         }
+      }
+
+      // Sync line items — same delete + re-insert pattern
+      await db.lineItem.deleteMany({ where: { orderId: order.id } });
+
+      if (raw.line_items.length > 0) {
+        await db.lineItem.createMany({
+          data: raw.line_items.map((li) => ({
+            orderId: order.id,
+            platformItemId: li.id.toString(),
+            platformProductId: li.product_id?.toString() || null,
+            title: li.title,
+            variantTitle: li.variant_title || null,
+            quantity: li.quantity,
+            priceCents: toCents(li.price),
+            sku: li.sku || null,
+            requiresShipping: li.requires_shipping ?? true,
+            grams: li.grams ?? null
+          }))
+        });
       }
 
       count++;
@@ -162,6 +209,67 @@ async function syncBalanceTransactions(shop: string, token: string): Promise<voi
   }
 }
 
+function parseFilename(src: string): string | null {
+  try {
+    const pathname = new URL(src).pathname;
+    const base = pathname.split('/').pop() ?? '';
+    // Strip Shopify's size suffix (e.g. _800x.jpg → .jpg)
+    return base.replace(/(_\d+x\d*|\d*x\d+)\.(jpg|png|webp|gif)/i, '.$2') || null;
+  } catch {
+    return null;
+  }
+}
+
+async function upsertProducts(shop: string, token: string): Promise<number> {
+  let count = 0;
+
+  for await (const batch of fetchAllProducts(shop, token)) {
+    for (const raw of batch) {
+      const productData = {
+        platform: Platform.SHOPIFY,
+        platformProductId: raw.id.toString(),
+        title: raw.title,
+        vendor: raw.vendor || null,
+        productType: raw.product_type || null,
+        status: raw.status,
+        tags: raw.tags || null
+      };
+
+      const product = await db.product.upsert({
+        where: {
+          platform_platformProductId: {
+            platform: Platform.SHOPIFY,
+            platformProductId: raw.id.toString()
+          }
+        },
+        create: productData,
+        update: productData
+      });
+
+      // Delete + re-insert images to stay idempotent
+      await db.productImage.deleteMany({ where: { productId: product.id } });
+
+      if (raw.images.length > 0) {
+        await db.productImage.createMany({
+          data: raw.images.map((img) => ({
+            productId: product.id,
+            src: img.src,
+            filename: parseFilename(img.src),
+            alt: img.alt,
+            position: img.position,
+            width: img.width,
+            height: img.height
+          }))
+        });
+      }
+
+      count++;
+    }
+  }
+
+  return count;
+}
+
 async function syncShippingLabelCosts(shop: string, token: string): Promise<void> {
   try {
     const orders = await db.order.findMany({
@@ -211,9 +319,10 @@ export async function runShopifySync(triggeredManually = false): Promise<void> {
   const since = triggeredManually ? undefined : lastSuccess?.startedAt.toISOString();
 
   try {
-    const [ordersCount, payoutsCount] = await Promise.all([
+    const [ordersCount, payoutsCount, productsCount] = await Promise.all([
       upsertOrders(connection.shop, connection.accessToken, since),
-      upsertPayouts(connection.shop, connection.accessToken)
+      upsertPayouts(connection.shop, connection.accessToken),
+      upsertProducts(connection.shop, connection.accessToken)
     ]);
 
     await syncBalanceTransactions(connection.shop, connection.accessToken);
@@ -229,7 +338,7 @@ export async function runShopifySync(triggeredManually = false): Promise<void> {
       }
     });
 
-    console.log(`[sync] Shopify sync complete — ${ordersCount} orders, ${payoutsCount} payouts`);
+    console.log(`[sync] Shopify sync complete — ${ordersCount} orders, ${payoutsCount} payouts, ${productsCount} products`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[sync] Shopify sync failed:', message);

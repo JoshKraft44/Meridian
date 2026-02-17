@@ -92,9 +92,12 @@
         </thead>
         <tbody>
           {#each data.orders as order}
-            <tr class="border-b border-border/50 hover:bg-elevated/50 transition-colors duration-150">
+            <tr
+              onclick={() => goto(`/orders/${order.id}`)}
+              class="border-b border-border/50 hover:bg-elevated/50 transition-colors duration-150 cursor-pointer"
+            >
               <td class="px-4 py-3 text-text-primary font-medium">
-                #{order.platformOrderId}
+                {order.orderName ?? `#${order.platformOrderId}`}
               </td>
               <td class="px-4 py-3 text-text-secondary">
                 {formatDateShort(order.orderDate)}

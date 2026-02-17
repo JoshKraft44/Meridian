@@ -31,6 +31,7 @@ export const load: PageServerLoad = async ({ url }) => {
       id: o.id,
       platform: o.platform,
       platformOrderId: o.platformOrderId,
+      orderName: o.orderName,
       orderDate: o.orderDate.toISOString(),
       grossRevenueCents: o.grossRevenueCents,
       shippingChargedCents: o.shippingChargedCents,

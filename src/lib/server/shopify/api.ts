@@ -8,16 +8,43 @@ export interface ShopifyOrder {
   name: string;
   created_at: string;
   financial_status: string;
+  fulfillment_status: string | null;
   total_price: string;
+  subtotal_price: string;
+  total_discounts: string;
   total_tax: string;
   total_shipping_price_set?: {
     shop_money?: { amount: string };
   };
   currency: string;
   email?: string;
+  note?: string | null;
+  tags?: string;
+  cancel_reason?: string | null;
+  cancelled_at?: string | null;
+  closed_at?: string | null;
+  payment_gateway_names?: string[];
+  discount_codes?: { code: string; amount: string; type: string }[];
+  customer?: {
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+    phone?: string;
+  };
   billing_address?: {
     first_name?: string;
     last_name?: string;
+  };
+  shipping_address?: {
+    name?: string;
+    address1?: string;
+    address2?: string;
+    city?: string;
+    province?: string;
+    province_code?: string;
+    zip?: string;
+    country?: string;
+    country_code?: string;
   };
   refunds: {
     id: number;
@@ -32,8 +59,13 @@ export interface ShopifyOrder {
   line_items: {
     id: number;
     title: string;
+    variant_title?: string;
     quantity: number;
     price: string;
+    sku?: string;
+    requires_shipping?: boolean;
+    grams?: number;
+    product_id?: number;
   }[];
 }
 
@@ -48,6 +80,25 @@ export interface ShopifyPayout {
     charges_fee_amount: string;
     refunds_fee_amount: string;
   };
+}
+
+export interface ShopifyProductImage {
+  id: number;
+  src: string;
+  alt: string | null;
+  position: number;
+  width: number;
+  height: number;
+}
+
+export interface ShopifyProduct {
+  id: number;
+  title: string;
+  vendor: string;
+  product_type: string;
+  status: string;
+  tags: string;
+  images: ShopifyProductImage[];
 }
 
 export interface ShopifyBalanceTransaction {
@@ -158,6 +209,25 @@ export async function* fetchAllBalanceTransactions(
 
     const data: { transactions: ShopifyBalanceTransaction[] } = await res.json();
     if (data.transactions.length > 0) yield data.transactions;
+
+    url = getNextPageUrl(res.headers.get('Link') || '');
+    if (url) await sleep(500);
+  }
+}
+
+export async function* fetchAllProducts(
+  shop: string,
+  token: string
+): AsyncGenerator<ShopifyProduct[]> {
+  let url: string | null =
+    `https://${shop}/admin/api/${API_VERSION}/products.json?limit=250`;
+
+  while (url) {
+    const res = await shopifyFetch(url, token);
+    if (!res.ok) throw new Error(`shopify api error: ${res.status}`);
+
+    const data: { products: ShopifyProduct[] } = await res.json();
+    if (data.products.length > 0) yield data.products;
 
     url = getNextPageUrl(res.headers.get('Link') || '');
     if (url) await sleep(500);
