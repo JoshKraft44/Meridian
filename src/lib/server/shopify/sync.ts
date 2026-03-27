@@ -225,14 +225,30 @@ async function upsertProducts(shop: string, token: string): Promise<number> {
 
   for await (const batch of fetchAllProducts(shop, token)) {
     for (const raw of batch) {
+      const firstVariant = raw.variants?.[0];
+      const description = raw.body_html
+        ? raw.body_html.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ').trim() || null
+        : null;
+
       const productData = {
         platform: Platform.SHOPIFY,
         platformProductId: raw.id.toString(),
         title: raw.title,
+        description,
         vendor: raw.vendor || null,
         productType: raw.product_type || null,
         status: raw.status,
-        tags: raw.tags || null
+        tags: raw.tags || null,
+        sku: firstVariant?.sku || null,
+        priceCents: firstVariant?.price ? toCents(firstVariant.price) : null,
+        weightGrams: firstVariant?.weight
+          ? Math.round(
+              firstVariant.weight_unit === 'kg' ? firstVariant.weight * 1000
+              : firstVariant.weight_unit === 'lb' ? firstVariant.weight * 453.592
+              : firstVariant.weight_unit === 'oz' ? firstVariant.weight * 28.3495
+              : firstVariant.weight
+            )
+          : null
       };
 
       const product = await db.product.upsert({

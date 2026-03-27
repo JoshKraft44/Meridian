@@ -36,6 +36,7 @@ export const load: PageServerLoad = async ({ url }) => {
       grossRevenueCents: o.grossRevenueCents,
       shippingChargedCents: o.shippingChargedCents,
       shippingCostCents: o.shippingCostCents,
+      shippingCostOverrideCents: o.shippingCostOverrideCents,
       taxesCents: o.taxesCents,
       status: o.status,
       totalFeesCents: o.feeLines.reduce((s, f) => s + f.amountCents, 0),

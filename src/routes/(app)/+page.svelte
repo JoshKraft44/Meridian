@@ -15,6 +15,23 @@
   let syncing = $state(false);
   let syncMessage = $state('');
 
+  // persist dismissed alert IDs in localStorage
+  const DISMISSED_KEY = 'meridian:dismissed_alerts';
+  function getDismissed(): Set<string> {
+    if (typeof localStorage === 'undefined') return new Set();
+    try {
+      return new Set(JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? '[]'));
+    } catch {
+      return new Set();
+    }
+  }
+  let dismissed = $state(getDismissed());
+  function dismissAlert(id: string) {
+    dismissed = new Set([...dismissed, id]);
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissed]));
+  }
+  const visibleAlerts = $derived(data.takedownAlerts.filter((a) => !dismissed.has(a.id)));
+
   const platforms: { label: string; value: PlatformFilter }[] = [
     { label: 'All stores', value: 'all' },
     { label: 'Shopify', value: 'shopify' },
@@ -140,6 +157,30 @@
         {summary.missingShippingCostCount} order{summary.missingShippingCostCount !== 1 ? 's' : ''} missing shipping cost — net profit may be understated
       </div>
     {/if}
+
+    {#each visibleAlerts as alert (alert.id)}
+      <div class="rounded-md bg-negative/10 border border-negative/20 px-4 py-2.5 flex items-center justify-between gap-4">
+        <p class="text-xs text-negative">
+          <a href="/products/{alert.inactiveProductId}" class="font-medium hover:underline">
+            {alert.inactiveProductTitle}
+          </a>
+          <span class="text-negative/70"> on {alert.inactivePlatform.toLowerCase()} appears inactive — </span>
+          <a href="/products/{alert.activeProductId}" class="hover:underline">
+            {alert.recentOrderCount} recent order{alert.recentOrderCount !== 1 ? 's' : ''}
+          </a>
+          <span class="text-negative/70"> still coming in via {alert.activePlatform.toLowerCase()}</span>
+        </p>
+        <button
+          onclick={() => dismissAlert(alert.id)}
+          class="shrink-0 text-negative/50 hover:text-negative transition-colors duration-150"
+          aria-label="Dismiss"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    {/each}
 
     <!-- Primary KPIs -->
     <div class="grid grid-cols-2 gap-4">

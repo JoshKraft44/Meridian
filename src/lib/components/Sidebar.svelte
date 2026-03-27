@@ -5,6 +5,7 @@
   const nav = [
     { label: 'Dashboard', href: '/', icon: 'grid' },
     { label: 'Orders', href: '/orders', icon: 'list' },
+    { label: 'Products', href: '/products', icon: 'box' },
     { label: 'Expenses', href: '/expenses', icon: 'receipt' },
     { label: 'Settings', href: '/settings', icon: 'settings' }
   ];
