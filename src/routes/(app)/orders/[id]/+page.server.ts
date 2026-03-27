@@ -1,6 +1,6 @@
-import type { PageServerLoad } from './$types';
+import type { PageServerLoad, Actions } from './$types';
 import { db } from '$lib/db';
-import { error } from '@sveltejs/kit';
+import { error, fail } from '@sveltejs/kit';
 
 export const load: PageServerLoad = async ({ params }) => {
   const order = await db.order.findUnique({
@@ -70,3 +70,29 @@ export const load: PageServerLoad = async ({ params }) => {
     productDataMap
   };
 };
+
+export const actions = {
+  setShippingOverride: async ({ request, params }) => {
+    const form = await request.formData();
+    const raw = (form.get('override') as string ?? '').trim();
+
+    if (!raw) {
+      await db.order.update({
+        where: { id: params.id },
+        data: { shippingCostOverrideCents: null }
+      });
+      return { cleared: true };
+    }
+
+    const amount = parseFloat(raw);
+    if (isNaN(amount) || amount < 0) {
+      return fail(400, { error: 'Must be a valid amount' });
+    }
+
+    await db.order.update({
+      where: { id: params.id },
+      data: { shippingCostOverrideCents: Math.round(amount * 100) }
+    });
+    return { updated: true };
+  }
+} satisfies Actions;
