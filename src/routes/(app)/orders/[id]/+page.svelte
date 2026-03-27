@@ -1,11 +1,17 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { formatCents, formatDateShort, formatDateTime } from '$lib/utils';
+  import { enhance } from '$app/forms';
   import ImageLightbox from '$lib/components/ImageLightbox.svelte';
 
   let { data }: { data: PageData } = $props();
   const order = data.order;
   const productData = data.productDataMap;
+
+  let editingShipping = $state(false);
+  let shippingOverrideInput = $state(
+    order.shippingCostOverrideCents != null ? (order.shippingCostOverrideCents / 100).toFixed(2) : ''
+  );
 
   let lightboxImages: { src: string; alt: string | null }[] = $state([]);
   let lightboxOpen = $state(false);
@@ -36,7 +42,8 @@
 
   const totalFees = order.feeLines.reduce((s, f) => s + f.amountCents, 0);
   const totalRefunds = order.refunds.reduce((s, r) => s + r.amountCents, 0);
-  const netProfit = order.grossRevenueCents - totalFees - (order.shippingCostCents ?? 0) - totalRefunds;
+  const effectiveShipping = order.shippingCostOverrideCents ?? order.shippingCostCents ?? 0;
+  const netProfit = order.grossRevenueCents - totalFees - effectiveShipping - totalRefunds;
 
   const feesByType = order.feeLines.reduce<Record<string, number>>((acc, f) => {
     const label = f.type.replace(/_/g, ' ').toLowerCase();
@@ -224,14 +231,79 @@
               </div>
             {/each}
 
-            <div class="flex justify-between"
-              class:text-text-secondary={order.shippingCostCents !== null}
-              class:text-warning={order.shippingCostCents === null}
+            <div class="flex justify-between items-center"
+              class:text-text-secondary={effectiveShipping > 0 || order.shippingCostOverrideCents != null}
+              class:text-warning={order.shippingCostOverrideCents == null && order.shippingCostCents === null}
             >
-              <span>Shipping cost</span>
-              <span class="tabular-nums">
-                {order.shippingCostCents !== null ? `-${formatCents(order.shippingCostCents)}` : 'unknown'}
+              <span class="flex items-center gap-1.5">
+                Shipping cost
+                {#if !editingShipping}
+                  <button
+                    onclick={() => editingShipping = true}
+                    class="text-text-muted hover:text-text-secondary transition-colors duration-150"
+                    title="Edit shipping cost"
+                  >
+                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                {/if}
               </span>
+
+              {#if editingShipping}
+                <form
+                  method="POST"
+                  action="?/setShippingOverride"
+                  use:enhance={() => {
+                    return async ({ update }) => {
+                      editingShipping = false;
+                      await update();
+                    };
+                  }}
+                  class="flex items-center gap-1.5"
+                >
+                  <span class="text-text-muted text-xs">$</span>
+                  <input
+                    name="override"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={shippingOverrideInput}
+                    placeholder={order.shippingCostCents != null ? (order.shippingCostCents / 100).toFixed(2) : '0.00'}
+                    class="w-20 px-2 py-0.5 text-xs text-right bg-elevated border border-border rounded tabular-nums text-text-primary focus:outline-none focus:border-border-hover"
+                  />
+                  <button type="submit" class="text-positive text-xs hover:underline">Save</button>
+                  <button type="button" onclick={() => editingShipping = false} class="text-text-muted text-xs hover:underline">Cancel</button>
+                </form>
+              {:else}
+                <span class="tabular-nums flex items-center gap-1.5">
+                  {#if order.shippingCostOverrideCents != null}
+                    -{formatCents(order.shippingCostOverrideCents)}
+                    <span class="text-xs text-text-muted">(was {order.shippingCostCents != null ? formatCents(order.shippingCostCents) : 'unknown'})</span>
+                  {:else if order.shippingCostCents != null}
+                    -{formatCents(order.shippingCostCents)}
+                  {:else}
+                    unknown
+                  {/if}
+                  {#if order.shippingCostOverrideCents != null}
+                    <form
+                      method="POST"
+                      action="?/setShippingOverride"
+                      use:enhance={() => {
+                        return async ({ update }) => { await update(); };
+                      }}
+                      class="inline"
+                    >
+                      <input type="hidden" name="override" value="" />
+                      <button type="submit" class="text-text-muted hover:text-negative text-xs" title="Clear override">
+                        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </form>
+                  {/if}
+                </span>
+              {/if}
             </div>
 
             {#if totalRefunds > 0}

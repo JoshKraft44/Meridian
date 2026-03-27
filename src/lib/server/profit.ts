@@ -76,6 +76,7 @@ export async function getProfitSummary(
         grossRevenueCents: true,
         shippingChargedCents: true,
         shippingCostCents: true,
+        shippingCostOverrideCents: true,
         taxesCents: true
       }
     }),
@@ -96,9 +97,9 @@ export async function getProfitSummary(
 
   const grossRevenueCents = orders.reduce((s, o) => s + o.grossRevenueCents, 0);
   const shippingChargedCents = orders.reduce((s, o) => s + o.shippingChargedCents, 0);
-  const shippingCostCents = orders.reduce((s, o) => s + (o.shippingCostCents ?? 0), 0);
+  const shippingCostCents = orders.reduce((s, o) => s + (o.shippingCostOverrideCents ?? o.shippingCostCents ?? 0), 0);
   const taxesCents = orders.reduce((s, o) => s + o.taxesCents, 0);
-  const missingShippingCostCount = orders.filter((o) => o.shippingCostCents === null).length;
+  const missingShippingCostCount = orders.filter((o) => o.shippingCostOverrideCents === null && o.shippingCostCents === null).length;
 
   const totalFeesCents = feeAgg._sum.amountCents ?? 0;
   const totalRefundsCents = refundAgg._sum.amountCents ?? 0;
@@ -138,6 +139,7 @@ export async function getRevenueTimeSeries(
       grossRevenueCents: true,
       taxesCents: true,
       shippingCostCents: true,
+      shippingCostOverrideCents: true,
       feeLines: { select: { amountCents: true } },
       refunds: { select: { amountCents: true } }
     },
@@ -159,7 +161,7 @@ export async function getRevenueTimeSeries(
       : order.grossRevenueCents;
     const fees = order.feeLines.reduce((s, f) => s + f.amountCents, 0);
     const refunds = order.refunds.reduce((s, r) => s + r.amountCents, 0);
-    const shipping = order.shippingCostCents ?? 0;
+    const shipping = order.shippingCostOverrideCents ?? order.shippingCostCents ?? 0;
 
     bucket.grossCents += gross;
     bucket.netCents += gross - fees - shipping - refunds;

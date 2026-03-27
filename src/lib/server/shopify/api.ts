@@ -91,14 +91,24 @@ export interface ShopifyProductImage {
   height: number;
 }
 
+export interface ShopifyProductVariant {
+  id: number;
+  sku: string;
+  price: string;
+  weight: number;
+  weight_unit: string;
+}
+
 export interface ShopifyProduct {
   id: number;
   title: string;
+  body_html: string | null;
   vendor: string;
   product_type: string;
   status: string;
   tags: string;
   images: ShopifyProductImage[];
+  variants: ShopifyProductVariant[];
 }
 
 export interface ShopifyBalanceTransaction {

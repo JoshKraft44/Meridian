@@ -54,6 +54,7 @@ model Order {
   totalDiscountsCents Int?
   shippingChargedCents Int
   shippingCostCents Int?
+  shippingCostOverrideCents Int?
   taxesCents Int
   cogsCents Int @default(0)
   status OrderStatus @default(OPEN)
@@ -196,6 +197,17 @@ model Product {
   productType       String?
   status            String?
   tags              String?
+  description       String?
+  sku               String?
+  priceCents        Int?
+  weightGrams       Int?
+  lengthCm          Float?
+  widthCm           Float?
+  heightCm          Float?
+
+  linkedProductId String?  @unique
+  linkedProduct   Product? @relation("ProductLink", fields: [linkedProductId], references: [id])
+  linkedBy        Product? @relation("ProductLink")
 
   images ProductImage[]
 
@@ -204,6 +216,7 @@ model Product {
 
   @@unique([platform, platformProductId])
   @@index([platform])
+  @@index([sku])
 }
 
 model ProductImage {

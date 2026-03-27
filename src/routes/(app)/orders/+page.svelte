@@ -44,7 +44,7 @@
   }
 
   function netProfit(o: typeof data.orders[0]) {
-    return o.grossRevenueCents - o.totalFeesCents - (o.shippingCostCents ?? 0) - o.totalRefundsCents;
+    return o.grossRevenueCents - o.totalFeesCents - (o.shippingCostOverrideCents ?? o.shippingCostCents ?? 0) - o.totalRefundsCents;
   }
 </script>
 
@@ -117,10 +117,12 @@
                 {formatCents(order.totalFeesCents)}
               </td>
               <td class="px-4 py-3 text-right tabular-nums"
-                class:text-text-secondary={order.shippingCostCents !== null}
-                class:text-warning={order.shippingCostCents === null}
+                class:text-text-secondary={order.shippingCostOverrideCents != null || order.shippingCostCents != null}
+                class:text-warning={order.shippingCostOverrideCents == null && order.shippingCostCents === null}
               >
-                {order.shippingCostCents !== null ? formatCents(order.shippingCostCents) : '—'}
+                {order.shippingCostOverrideCents != null || order.shippingCostCents != null
+                  ? formatCents(order.shippingCostOverrideCents ?? order.shippingCostCents ?? 0)
+                  : '—'}
               </td>
               <td class="px-4 py-3 text-right font-medium tabular-nums"
                 class:text-positive={netProfit(order) >= 0}
