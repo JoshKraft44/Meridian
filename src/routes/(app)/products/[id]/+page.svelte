@@ -9,6 +9,9 @@
   const product = data.product;
 
   let lightboxOpen = $state(false);
+  let activeTab = $state<'overview' | 'notes'>('overview');
+  let noteInput = $state('');
+  let submittingNote = $state(false);
 
   function statusBadge(status: string) {
     switch (status) {
@@ -41,6 +44,18 @@
     : null;
 
   const hasDimensions = product.weightGrams || product.lengthCm || product.widthCm || product.heightCm;
+
+  function formatNoteDate(iso: string) {
+    const d = new Date(iso);
+    return d.toLocaleString('en-CA', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'America/Edmonton'
+    });
+  }
 </script>
 
 <svelte:head>
@@ -77,232 +92,310 @@
       </div>
     </div>
 
-    <!-- Main grid -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Tabs -->
+    <div class="flex gap-1 border-b border-border">
+      {#each [['overview', 'Overview'], ['notes', `Notes${product.notes.length > 0 ? ` (${product.notes.length})` : ''}`]] as [id, label]}
+        <button
+          onclick={() => activeTab = id as 'overview' | 'notes'}
+          class="px-4 py-2 text-sm font-medium transition-colors duration-150 border-b-2 -mb-px
+            {activeTab === id
+              ? 'border-accent text-text-primary accent-text'
+              : 'border-transparent text-text-muted hover:text-text-secondary'}"
+        >
+          {label}
+        </button>
+      {/each}
+    </div>
 
-      <!-- Left column (2/3) -->
-      <div class="lg:col-span-2 space-y-6">
+    <!-- Overview tab -->
+    {#if activeTab === 'overview'}
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        <!-- Images -->
-        {#if product.images.length > 0}
+        <!-- Left column (2/3) -->
+        <div class="lg:col-span-2 space-y-6">
+
+          <!-- Images -->
+          {#if product.images.length > 0}
+            <div class="card overflow-hidden">
+              <div class="px-4 py-3 border-b border-border">
+                <p class="text-xs font-medium text-text-muted uppercase tracking-widest">Images</p>
+              </div>
+              <div class="p-4">
+                <div class="grid grid-cols-3 md:grid-cols-4 gap-3">
+                  {#each product.images as img}
+                    <button
+                      onclick={() => lightboxOpen = true}
+                      class="aspect-square rounded-md overflow-hidden bg-elevated hover:ring-2 hover:ring-white/20 transition-all duration-150 cursor-pointer"
+                    >
+                      <img src={img.src} alt={img.alt ?? product.title} class="w-full h-full object-cover" />
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            </div>
+          {/if}
+
+          <!-- Description -->
+          {#if product.description}
+            <div class="card p-4 space-y-3">
+              <p class="text-xs font-medium text-text-muted uppercase tracking-widest">Description</p>
+              <p class="text-sm text-text-secondary whitespace-pre-wrap">{product.description}</p>
+            </div>
+          {/if}
+
+          <!-- Recent orders -->
           <div class="card overflow-hidden">
             <div class="px-4 py-3 border-b border-border">
-              <p class="text-xs font-medium text-text-muted uppercase tracking-widest">Images</p>
+              <p class="text-xs font-medium text-text-muted uppercase tracking-widest">Recent orders</p>
             </div>
-            <div class="p-4">
-              <div class="grid grid-cols-3 md:grid-cols-4 gap-3">
-                {#each product.images as img, i}
-                  <button
-                    onclick={() => lightboxOpen = true}
-                    class="aspect-square rounded-md overflow-hidden bg-elevated hover:ring-2 hover:ring-white/20 transition-all duration-150 cursor-pointer"
-                  >
-                    <img src={img.src} alt={img.alt ?? product.title} class="w-full h-full object-cover" />
-                  </button>
-                {/each}
-              </div>
-            </div>
-          </div>
-        {/if}
-
-        <!-- Description -->
-        {#if product.description}
-          <div class="card p-4 space-y-3">
-            <p class="text-xs font-medium text-text-muted uppercase tracking-widest">Description</p>
-            <p class="text-sm text-text-secondary whitespace-pre-wrap">{product.description}</p>
-          </div>
-        {/if}
-
-        <!-- Recent orders -->
-        <div class="card overflow-hidden">
-          <div class="px-4 py-3 border-b border-border">
-            <p class="text-xs font-medium text-text-muted uppercase tracking-widest">Recent orders</p>
-          </div>
-          {#if data.recentOrders.length > 0}
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="border-b border-border/50 text-xs text-text-muted uppercase tracking-wider">
-                  <th class="text-left px-4 py-2 font-medium">Order</th>
-                  <th class="text-left px-4 py-2 font-medium">Date</th>
-                  <th class="text-left px-4 py-2 font-medium">Status</th>
-                  <th class="text-right px-4 py-2 font-medium">Revenue</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each data.recentOrders as order}
-                  <tr
-                    onclick={() => goto(`/orders/${order.id}`)}
-                    class="border-b border-border/30 hover:bg-elevated/50 transition-colors duration-150 cursor-pointer"
-                  >
-                    <td class="px-4 py-2.5 text-text-primary font-medium">
-                      {order.orderName ?? `#${order.id}`}
-                    </td>
-                    <td class="px-4 py-2.5 text-text-secondary">
-                      {formatDateShort(order.orderDate)}
-                    </td>
-                    <td class="px-4 py-2.5">
-                      <span class="text-xs px-2 py-0.5 rounded-full font-medium {statusBadge(order.status)}">
-                        {order.status.toLowerCase()}
-                      </span>
-                    </td>
-                    <td class="px-4 py-2.5 text-right text-text-primary tabular-nums">
-                      {formatCents(order.grossRevenueCents)}
-                    </td>
+            {#if data.recentOrders.length > 0}
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-border/50 text-xs text-text-muted uppercase tracking-wider">
+                    <th class="text-left px-4 py-2 font-medium">Order</th>
+                    <th class="text-left px-4 py-2 font-medium">Date</th>
+                    <th class="text-left px-4 py-2 font-medium">Status</th>
+                    <th class="text-right px-4 py-2 font-medium">Revenue</th>
                   </tr>
-                {/each}
-              </tbody>
-            </table>
-          {:else}
-            <div class="px-4 py-8 text-center text-text-muted text-sm">
-              No orders yet
-            </div>
-          {/if}
-        </div>
-      </div>
-
-      <!-- Right column (1/3) -->
-      <div class="space-y-6">
-
-        <!-- Details -->
-        <div class="card p-4 space-y-3">
-          <p class="text-xs font-medium text-text-muted uppercase tracking-widest">Details</p>
-          <div class="space-y-2 text-sm">
-            <div class="flex justify-between">
-              <span class="text-text-muted">Platform</span>
-              <span class="text-text-secondary">{product.platform}</span>
-            </div>
-            <div class="flex justify-between gap-2">
-              <span class="text-text-muted shrink-0">Listing ID</span>
-              {#if extUrl}
-                <a href={extUrl} target="_blank" rel="noopener" class="text-text-secondary hover:accent-text transition-colors duration-150 truncate">
-                  {product.platformProductId}
-                  <svg class="w-3 h-3 inline ml-0.5 -mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </a>
-              {:else}
-                <span class="text-text-secondary truncate">{product.platformProductId}</span>
-              {/if}
-            </div>
-            {#if product.sku}
-              <div class="flex justify-between">
-                <span class="text-text-muted">SKU</span>
-                <span class="text-text-secondary">{product.sku}</span>
-              </div>
-            {/if}
-            {#if product.priceCents != null}
-              <div class="flex justify-between">
-                <span class="text-text-muted">Price</span>
-                <span class="text-text-primary tabular-nums font-medium">{formatCents(product.priceCents)}</span>
-              </div>
-            {/if}
-            {#if product.vendor}
-              <div class="flex justify-between">
-                <span class="text-text-muted">Vendor</span>
-                <span class="text-text-secondary">{product.vendor}</span>
-              </div>
-            {/if}
-            {#if product.productType}
-              <div class="flex justify-between">
-                <span class="text-text-muted">Type</span>
-                <span class="text-text-secondary">{product.productType}</span>
+                </thead>
+                <tbody>
+                  {#each data.recentOrders as order}
+                    <tr
+                      onclick={() => goto(`/orders/${order.id}`)}
+                      class="border-b border-border/30 hover:bg-elevated/50 transition-colors duration-150 cursor-pointer"
+                    >
+                      <td class="px-4 py-2.5 text-text-primary font-medium">
+                        {order.orderName ?? `#${order.id}`}
+                      </td>
+                      <td class="px-4 py-2.5 text-text-secondary">
+                        {formatDateShort(order.orderDate)}
+                      </td>
+                      <td class="px-4 py-2.5">
+                        <span class="text-xs px-2 py-0.5 rounded-full font-medium {statusBadge(order.status)}">
+                          {order.status.toLowerCase()}
+                        </span>
+                      </td>
+                      <td class="px-4 py-2.5 text-right text-text-primary tabular-nums">
+                        {formatCents(order.grossRevenueCents)}
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            {:else}
+              <div class="px-4 py-8 text-center text-text-muted text-sm">
+                No orders yet
               </div>
             {/if}
           </div>
         </div>
 
-        <!-- Tags -->
-        {#if product.tags}
-          <div class="card p-4 space-y-3">
-            <p class="text-xs font-medium text-text-muted uppercase tracking-widest">Tags</p>
-            <div class="flex flex-wrap gap-1.5">
-              {#each product.tags.split(',').map(t => t.trim()).filter(Boolean) as tag}
-                <span class="text-xs px-2 py-0.5 rounded-full bg-elevated text-text-secondary border border-border">
-                  {tag}
-                </span>
-              {/each}
-            </div>
-          </div>
-        {/if}
+        <!-- Right column (1/3) -->
+        <div class="space-y-6">
 
-        <!-- Dimensions -->
-        {#if hasDimensions}
+          <!-- Details -->
           <div class="card p-4 space-y-3">
-            <p class="text-xs font-medium text-text-muted uppercase tracking-widest">Dimensions</p>
+            <p class="text-xs font-medium text-text-muted uppercase tracking-widest">Details</p>
             <div class="space-y-2 text-sm">
-              {#if product.weightGrams}
+              <div class="flex justify-between">
+                <span class="text-text-muted">Platform</span>
+                <span class="text-text-secondary">{product.platform}</span>
+              </div>
+              <div class="flex justify-between gap-2">
+                <span class="text-text-muted shrink-0">Listing ID</span>
+                {#if extUrl}
+                  <a href={extUrl} target="_blank" rel="noopener" class="text-text-secondary hover:accent-text transition-colors duration-150 truncate">
+                    {product.platformProductId}
+                    <svg class="w-3 h-3 inline ml-0.5 -mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                {:else}
+                  <span class="text-text-secondary truncate">{product.platformProductId}</span>
+                {/if}
+              </div>
+              {#if product.sku}
                 <div class="flex justify-between">
-                  <span class="text-text-muted">Weight</span>
-                  <span class="text-text-secondary">{product.weightGrams}g</span>
+                  <span class="text-text-muted">SKU</span>
+                  <span class="text-text-secondary">{product.sku}</span>
                 </div>
               {/if}
-              {#if product.lengthCm || product.widthCm || product.heightCm}
+              {#if product.priceCents != null}
                 <div class="flex justify-between">
-                  <span class="text-text-muted">Size</span>
-                  <span class="text-text-secondary">
-                    {[product.lengthCm, product.widthCm, product.heightCm].filter(Boolean).join(' × ')} cm
-                  </span>
+                  <span class="text-text-muted">Price</span>
+                  <span class="text-text-primary tabular-nums font-medium">{formatCents(product.priceCents)}</span>
+                </div>
+              {/if}
+              {#if product.vendor}
+                <div class="flex justify-between">
+                  <span class="text-text-muted">Vendor</span>
+                  <span class="text-text-secondary">{product.vendor}</span>
+                </div>
+              {/if}
+              {#if product.productType}
+                <div class="flex justify-between">
+                  <span class="text-text-muted">Type</span>
+                  <span class="text-text-secondary">{product.productType}</span>
                 </div>
               {/if}
             </div>
           </div>
-        {/if}
 
-        <!-- Linked product -->
-        <div class="card p-4 space-y-3">
-          <p class="text-xs font-medium text-text-muted uppercase tracking-widest">Linked product</p>
-          {#if data.linked}
-            <button
-              onclick={() => goto(`/products/${data.linked!.id}`)}
-              class="w-full flex items-center gap-3 p-2 -m-2 rounded-md hover:bg-elevated transition-colors duration-150 cursor-pointer"
-            >
-              {#if data.linked.thumbnail}
-                <img
-                  src={data.linked.thumbnail}
-                  alt={data.linked.title}
-                  class="w-10 h-10 rounded object-cover bg-elevated shrink-0"
-                />
-              {:else}
-                <div class="w-10 h-10 rounded bg-elevated shrink-0"></div>
-              {/if}
-              <div class="text-left min-w-0">
-                <p class="text-sm text-text-primary truncate">{data.linked.title}</p>
-                <span class="text-[10px] font-medium {platformBadge(data.linked.platform)}">{data.linked.platform}</span>
+          <!-- Tags -->
+          {#if product.tags}
+            <div class="card p-4 space-y-3">
+              <p class="text-xs font-medium text-text-muted uppercase tracking-widest">Tags</p>
+              <div class="flex flex-wrap gap-1.5">
+                {#each product.tags.split(',').map(t => t.trim()).filter(Boolean) as tag}
+                  <span class="text-xs px-2 py-0.5 rounded-full bg-elevated text-text-secondary border border-border">
+                    {tag}
+                  </span>
+                {/each}
               </div>
-            </button>
-            <div class="flex items-center justify-between mt-1">
-              {#if linkedExtUrl}
-                <a
-                  href={linkedExtUrl}
-                  target="_blank"
-                  rel="noopener"
-                  class="inline-flex items-center gap-1 text-xs text-text-muted hover:text-text-secondary transition-colors duration-150"
-                >
-                  View on {data.linked.platform.toLowerCase()}
-                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </a>
-              {:else}
-                <span></span>
-              {/if}
-              <form method="POST" action="?/unlink" use:enhance>
-                <button type="submit" class="text-xs text-negative/70 hover:text-negative transition-colors duration-150">
-                  Unlink
-                </button>
-              </form>
             </div>
-          {:else}
-            <p class="text-sm text-text-muted">Not linked to another platform</p>
-            <a
-              href="/products/linking"
-              class="inline-block text-xs accent-text hover:underline"
-            >
-              Manage links
-            </a>
           {/if}
+
+          <!-- Dimensions -->
+          {#if hasDimensions}
+            <div class="card p-4 space-y-3">
+              <p class="text-xs font-medium text-text-muted uppercase tracking-widest">Dimensions</p>
+              <div class="space-y-2 text-sm">
+                {#if product.weightGrams}
+                  <div class="flex justify-between">
+                    <span class="text-text-muted">Weight</span>
+                    <span class="text-text-secondary">{product.weightGrams}g</span>
+                  </div>
+                {/if}
+                {#if product.lengthCm || product.widthCm || product.heightCm}
+                  <div class="flex justify-between">
+                    <span class="text-text-muted">Size</span>
+                    <span class="text-text-secondary">
+                      {[product.lengthCm, product.widthCm, product.heightCm].filter(Boolean).join(' × ')} cm
+                    </span>
+                  </div>
+                {/if}
+              </div>
+            </div>
+          {/if}
+
+          <!-- Linked product -->
+          <div class="card p-4 space-y-3">
+            <p class="text-xs font-medium text-text-muted uppercase tracking-widest">Linked product</p>
+            {#if data.linked}
+              <button
+                onclick={() => goto(`/products/${data.linked!.id}`)}
+                class="w-full flex items-center gap-3 p-2 -m-2 rounded-md hover:bg-elevated transition-colors duration-150 cursor-pointer"
+              >
+                {#if data.linked.thumbnail}
+                  <img
+                    src={data.linked.thumbnail}
+                    alt={data.linked.title}
+                    class="w-10 h-10 rounded object-cover bg-elevated shrink-0"
+                  />
+                {:else}
+                  <div class="w-10 h-10 rounded bg-elevated shrink-0"></div>
+                {/if}
+                <div class="text-left min-w-0">
+                  <p class="text-sm text-text-primary truncate">{data.linked.title}</p>
+                  <span class="text-[10px] font-medium {platformBadge(data.linked.platform)}">{data.linked.platform}</span>
+                </div>
+              </button>
+              <div class="flex items-center justify-between mt-1">
+                {#if linkedExtUrl}
+                  <a
+                    href={linkedExtUrl}
+                    target="_blank"
+                    rel="noopener"
+                    class="inline-flex items-center gap-1 text-xs text-text-muted hover:text-text-secondary transition-colors duration-150"
+                  >
+                    View on {data.linked.platform.toLowerCase()}
+                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                {:else}
+                  <span></span>
+                {/if}
+                <form method="POST" action="?/unlink" use:enhance>
+                  <button type="submit" class="text-xs text-negative/70 hover:text-negative transition-colors duration-150">
+                    Unlink
+                  </button>
+                </form>
+              </div>
+            {:else}
+              <p class="text-sm text-text-muted">Not linked to another platform</p>
+              <a
+                href="/products/linking"
+                class="inline-block text-xs accent-text hover:underline"
+              >
+                Manage links
+              </a>
+            {/if}
+          </div>
         </div>
       </div>
-    </div>
+
+    <!-- Notes tab -->
+    {:else if activeTab === 'notes'}
+      <div class="max-w-2xl space-y-4">
+
+        <!-- Add note -->
+        <form
+          method="POST"
+          action="?/addNote"
+          use:enhance={() => {
+            submittingNote = true;
+            return async ({ update }) => {
+              await update();
+              noteInput = '';
+              submittingNote = false;
+            };
+          }}
+        >
+          <div class="card p-4 space-y-3">
+            <textarea
+              name="content"
+              bind:value={noteInput}
+              placeholder="Add a note..."
+              rows="3"
+              class="w-full bg-transparent text-sm text-text-primary placeholder:text-text-muted resize-none outline-none"
+            ></textarea>
+            <div class="flex justify-end border-t border-border pt-3">
+              <button
+                type="submit"
+                disabled={!noteInput.trim() || submittingNote}
+                class="text-sm px-4 py-1.5 rounded-md bg-accent text-white font-medium transition-opacity duration-150 disabled:opacity-40"
+              >
+                Add note
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <!-- Notes list -->
+        {#if product.notes.length > 0}
+          <div class="space-y-3">
+            {#each product.notes as note (note.id)}
+              <div class="card p-4 space-y-2">
+                <p class="text-sm text-text-primary whitespace-pre-wrap">{note.content}</p>
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-text-muted">{formatNoteDate(note.createdAt)}</span>
+                  <form method="POST" action="?/deleteNote" use:enhance>
+                    <input type="hidden" name="noteId" value={note.id} />
+                    <button type="submit" class="text-xs text-text-muted hover:text-negative transition-colors duration-150">
+                      Delete
+                    </button>
+                  </form>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <p class="text-sm text-text-muted">No notes yet.</p>
+        {/if}
+
+      </div>
+    {/if}
 
   </div>
 </div>
