@@ -1,7 +1,7 @@
 import type { RequestHandler } from './$types';
 import { redirect } from '@sveltejs/kit';
 import { randomBytes, createHash } from 'crypto';
-import { ETSY_KEYSTRING } from '$env/static/private';
+import { env } from '$env/dynamic/private';
 const SCOPES = ['transactions_r', 'listings_r', 'profile_r', 'shops_r'].join(' ');
 
 export const GET: RequestHandler = async ({ cookies }) => {
@@ -17,7 +17,7 @@ export const GET: RequestHandler = async ({ cookies }) => {
 	const authUrl =
 		`https://www.etsy.com/oauth/connect` +
 		`?response_type=code` +
-		`&client_id=${ETSY_KEYSTRING}` +
+		`&client_id=${env.ETSY_KEYSTRING}` +
 		`&redirect_uri=${encodeURIComponent(callbackUrl)}` +
 		`&scope=${encodeURIComponent(SCOPES)}` +
 		`&state=${state}` +
