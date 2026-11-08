@@ -210,6 +210,7 @@ model Product {
   linkedBy        Product? @relation("ProductLink")
 
   images ProductImage[]
+  notes  ProductNote[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -232,6 +233,16 @@ model ProductImage {
 
   @@index([productId])
   @@index([filename])
+}
+
+model ProductNote {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([productId])
 }
 
 model SyncRun {
@@ -261,6 +272,18 @@ model ShopifyConnection {
   lastSyncedAt DateTime?
 
   @@unique([shop])
+}
+
+model EtsyConnection {
+  id           String    @id @default(cuid())
+  shopId       String    @unique
+  shopName     String?
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+
+  connectedAt  DateTime  @default(now())
+  lastSyncedAt DateTime?
 }
 
 model Settings {

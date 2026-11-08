@@ -33,10 +33,10 @@
           <p class="text-xs text-text-muted">
             Connected {formatDateTime(data.connection.connectedAt)}
           </p>
-          {#if data.lastSync?.finishedAt}
+          {#if data.lastShopifySync?.finishedAt}
             <p class="text-xs text-text-muted">
-              Last sync: {formatDateTime(data.lastSync.finishedAt)}
-              — {data.lastSync.ordersUpserted} orders, {data.lastSync.payoutsSynced} payouts
+              Last sync: {formatDateTime(data.lastShopifySync.finishedAt)}
+              — {data.lastShopifySync.ordersUpserted} orders, {data.lastShopifySync.payoutsSynced} payouts
             </p>
           {/if}
         </div>
@@ -56,6 +56,45 @@
         </div>
         <a href="/api/shopify/install" class="btn-outline text-xs inline-block mt-2">
           Connect Shopify
+        </a>
+      {/if}
+    </section>
+
+    <section class="card p-5 space-y-4">
+      <h2 class="text-sm font-semibold text-text-primary">Etsy Connection</h2>
+
+      {#if data.etsyConnection}
+        <div class="space-y-2">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-positive"></span>
+            <span class="text-sm text-text-primary">{data.etsyConnection.shopName ?? 'Connected'}</span>
+          </div>
+          <p class="text-xs text-text-muted">
+            Connected {formatDateTime(data.etsyConnection.connectedAt)}
+          </p>
+          {#if data.lastEtsySync?.finishedAt}
+            <p class="text-xs text-text-muted">
+              Last sync: {formatDateTime(data.lastEtsySync.finishedAt)}
+              — {data.lastEtsySync.ordersUpserted} orders
+            </p>
+          {/if}
+        </div>
+
+        <div class="flex gap-3 pt-2">
+          <a href="/api/etsy/install" class="btn-outline text-xs">Re-authorize</a>
+          <form method="POST" action="?/disconnectEtsy" use:enhance>
+            <button type="submit" class="text-xs text-negative hover:text-negative/80 transition-colors">
+              Disconnect
+            </button>
+          </form>
+        </div>
+      {:else}
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-text-muted"></span>
+          <span class="text-sm text-text-secondary">Not connected</span>
+        </div>
+        <a href="/api/etsy/install" class="btn-outline text-xs inline-block mt-2">
+          Connect Etsy
         </a>
       {/if}
     </section>

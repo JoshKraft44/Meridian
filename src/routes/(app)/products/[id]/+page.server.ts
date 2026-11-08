@@ -8,6 +8,7 @@ export const load: PageServerLoad = async ({ params }) => {
     where: { id: params.id },
     include: {
       images: { orderBy: { position: 'asc' } },
+      notes: { orderBy: { createdAt: 'desc' } },
       linkedProduct: {
         include: { images: { orderBy: { position: 'asc' }, take: 1 } }
       },
@@ -74,6 +75,11 @@ export const load: PageServerLoad = async ({ params }) => {
         src: img.src,
         alt: img.alt,
         position: img.position
+      })),
+      notes: product.notes.map((n) => ({
+        id: n.id,
+        content: n.content,
+        createdAt: n.createdAt.toISOString()
       }))
     },
     linked: linked
@@ -97,5 +103,23 @@ export const actions: Actions = {
     } catch (e) {
       return fail(400, { error: String(e) });
     }
+  },
+
+  addNote: async ({ params, request }) => {
+    const data = await request.formData();
+    const content = (data.get('content') as string)?.trim();
+    if (!content) return fail(400, { error: 'Note cannot be empty' });
+
+    await db.productNote.create({
+      data: { productId: params.id, content }
+    });
+  },
+
+  deleteNote: async ({ request }) => {
+    const data = await request.formData();
+    const noteId = data.get('noteId') as string;
+    if (!noteId) return fail(400, { error: 'Missing noteId' });
+
+    await db.productNote.delete({ where: { id: noteId } });
   }
 };
