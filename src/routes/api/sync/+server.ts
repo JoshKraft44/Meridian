@@ -2,6 +2,7 @@ import type { RequestHandler } from './$types';
 import { json, error } from '@sveltejs/kit';
 import { runShopifySync } from '$lib/server/shopify/sync';
 import { runEtsySync } from '$lib/server/etsy/sync';
+import { runMetaSync } from '$lib/server/meta/sync';
 
 let syncInProgress = false;
 let lastTriggered = 0;
@@ -25,6 +26,7 @@ export const POST: RequestHandler = async ({ locals }) => {
 	Promise.all([
 		runShopifySync(true),
 		runEtsySync(true),
+		runMetaSync(),
 	])
 		.catch(console.error)
 		.finally(() => {

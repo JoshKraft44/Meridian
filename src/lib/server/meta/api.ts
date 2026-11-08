@@ -92,6 +92,27 @@ export async function metaGet<T>(
   }
 }
 
+// Follows cursor paging on list edges (campaigns, insights, ...)
+export async function* metaGetPages<T>(
+  path: string,
+  creds: MetaCredentials,
+  params: Record<string, string> = {}
+): AsyncGenerator<T[]> {
+  let after: string | undefined;
+
+  while (true) {
+    const page = await metaGet<{ data: T[]; paging?: { next?: string; cursors?: { after?: string } } }>(
+      path,
+      creds,
+      after ? { ...params, after } : params
+    );
+    if (page.data.length > 0) yield page.data;
+
+    after = page.paging?.cursors?.after;
+    if (!page.paging?.next || !after) return;
+  }
+}
+
 // debug_token needs an app token (app_id|app_secret), not the token being inspected.
 export interface TokenDebugInfo {
   app_id: string;
