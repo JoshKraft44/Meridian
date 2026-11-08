@@ -30,6 +30,8 @@ interface GraphErrorBody {
     code?: number;
     error_subcode?: number;
     fbtrace_id?: string;
+    error_user_title?: string;
+    error_user_msg?: string;
   };
 }
 
@@ -59,8 +61,10 @@ async function toError(res: Response): Promise<MetaApiError> {
     // non-JSON error body, fall through with status only
   }
   const code = body.error?.code ?? null;
+  // The generic message is often just "Invalid parameter"; the user_* fields say what's actually wrong
+  const detail = [body.error?.error_user_title, body.error?.error_user_msg].filter(Boolean).join(': ');
   return new MetaApiError(
-    body.error?.message ?? `meta api ${res.status}`,
+    [body.error?.message ?? `meta api ${res.status}`, detail].filter(Boolean).join(' | '),
     classify(code, res.status),
     code,
     body.error?.error_subcode ?? null,
