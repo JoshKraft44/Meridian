@@ -1,6 +1,13 @@
 import type { DatePreset } from './types';
 
-const TZ = 'America/Edmonton';
+// Alberta went to permanent UTC-6 on 2026-11-01. Node's bundled ICU (and older browsers) still
+// apply the old MST/MDT rules there, so after the switch use Regina, which has always been a fixed
+// UTC-6. Before it, America/Edmonton is right.
+const ALBERTA_UTC6_FROM = Date.UTC(2026, 10, 1, 8);
+
+export function albertaZone(date: Date = new Date()): string {
+  return date.getTime() >= ALBERTA_UTC6_FROM ? 'America/Regina' : 'America/Edmonton';
+}
 
 export function formatCents(cents: number): string {
   const abs = Math.abs(cents);
@@ -34,7 +41,7 @@ export function formatCentsCompact(cents: number): string {
 
 export function formatDateShort(date: Date | string): string {
   return new Date(date).toLocaleDateString('en-CA', {
-    timeZone: TZ,
+    timeZone: albertaZone(new Date(date)),
     month: 'short',
     day: 'numeric'
   });
@@ -42,7 +49,7 @@ export function formatDateShort(date: Date | string): string {
 
 export function formatDateTime(date: Date | string): string {
   return new Date(date).toLocaleString('en-CA', {
-    timeZone: TZ,
+    timeZone: albertaZone(new Date(date)),
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
@@ -55,7 +62,7 @@ export function edmontonLocalToDate(local: string): Date {
   const asUtc = new Date(`${local}:00Z`);
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat('en-US', {
-      timeZone: TZ,
+      timeZone: albertaZone(asUtc),
       hourCycle: 'h23',
       year: 'numeric',
       month: '2-digit',
@@ -75,14 +82,14 @@ export function cdnThumb(url: string, width: number): string {
 }
 
 export function startOfDayEdmonton(date: Date): Date {
-  const str = date.toLocaleDateString('en-CA', { timeZone: TZ });
-  return new Date(`${str}T00:00:00-07:00`);
+  const str = date.toLocaleDateString('en-CA', { timeZone: albertaZone(date) });
+  return edmontonLocalToDate(`${str}T00:00`);
 }
 
 export function getPresetRange(preset: DatePreset): { start: Date; end: Date } {
   const now = new Date();
-  const todayStr = now.toLocaleDateString('en-CA', { timeZone: TZ });
-  const today = new Date(`${todayStr}T00:00:00-07:00`);
+  const todayStr = now.toLocaleDateString('en-CA', { timeZone: albertaZone(now) });
+  const today = edmontonLocalToDate(`${todayStr}T00:00`);
 
   const end = new Date(today);
   end.setDate(end.getDate() + 1);
@@ -103,7 +110,7 @@ export function getPresetRange(preset: DatePreset): { start: Date; end: Date } {
       return { start, end };
     }
     case 'thisMonth': {
-      const start = new Date(`${todayStr.slice(0, 7)}-01T00:00:00-07:00`);
+      const start = edmontonLocalToDate(`${todayStr.slice(0, 7)}-01T00:00`);
       return { start, end };
     }
     case 'last30': {
@@ -112,7 +119,7 @@ export function getPresetRange(preset: DatePreset): { start: Date; end: Date } {
       return { start, end };
     }
     case 'ytd': {
-      const start = new Date(`${todayStr.slice(0, 4)}-01-01T00:00:00-07:00`);
+      const start = edmontonLocalToDate(`${todayStr.slice(0, 4)}-01-01T00:00`);
       return { start, end };
     }
     case 'lastYear': {
@@ -121,7 +128,7 @@ export function getPresetRange(preset: DatePreset): { start: Date; end: Date } {
       return { start, end };
     }
     case 'allTime': {
-      const start = new Date('2020-01-01T00:00:00-07:00');
+      const start = edmontonLocalToDate('2020-01-01T00:00');
       return { start, end };
     }
     default:

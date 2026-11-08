@@ -2,7 +2,7 @@
   import type { PageData } from './$types';
   import { goto } from '$app/navigation';
   import { enhance } from '$app/forms';
-  import { formatCents, formatDateShort } from '$lib/utils';
+  import { albertaZone, formatCents, formatDateShort } from '$lib/utils';
   import ImageLightbox from '$lib/components/ImageLightbox.svelte';
 
   let { data }: { data: PageData } = $props();
@@ -53,7 +53,7 @@
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-      timeZone: 'America/Edmonton'
+      timeZone: albertaZone(d)
     });
   }
 </script>
