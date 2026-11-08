@@ -1,10 +1,12 @@
 import type { RequestHandler } from './$types';
-import { redirect } from '@sveltejs/kit';
+import { redirect, error } from '@sveltejs/kit';
 import { randomBytes, createHash } from 'crypto';
 import { env } from '$env/dynamic/private';
 const SCOPES = ['transactions_r', 'listings_r', 'profile_r', 'shops_r'].join(' ');
 
-export const GET: RequestHandler = async ({ cookies }) => {
+export const GET: RequestHandler = async ({ cookies, locals }) => {
+	if (!locals.user) error(401, 'Unauthorized');
+
 	const codeVerifier = randomBytes(32).toString('base64url');
 	const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
 	const state = randomBytes(16).toString('hex');
