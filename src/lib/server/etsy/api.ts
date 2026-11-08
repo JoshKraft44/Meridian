@@ -1,4 +1,4 @@
-import { ETSY_KEYSTRING, ETSY_SHARED_SECRET } from '$env/static/private';
+import { env } from '$env/dynamic/private';
 
 const BASE = 'https://openapi.etsy.com/v3';
 const TOKEN_URL = 'https://api.etsy.com/v3/public/oauth/token';
@@ -11,7 +11,7 @@ async function etsyFetch(path: string, token: string, params?: Record<string, st
 
 	const res = await fetch(url.toString(), {
 		headers: {
-			'x-api-key': `${ETSY_KEYSTRING}:${ETSY_SHARED_SECRET}`,
+			'x-api-key': `${env.ETSY_KEYSTRING}:${env.ETSY_SHARED_SECRET}`,
 			Authorization: `Bearer ${token}`,
 		},
 	});
@@ -149,7 +149,7 @@ export async function exchangeCode(
 		headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 		body: new URLSearchParams({
 			grant_type: 'authorization_code',
-			client_id: ETSY_KEYSTRING,
+			client_id: env.ETSY_KEYSTRING,
 			redirect_uri: redirectUri,
 			code,
 			code_verifier: codeVerifier,
@@ -167,7 +167,7 @@ export async function refreshAccessToken(
 		headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 		body: new URLSearchParams({
 			grant_type: 'refresh_token',
-			client_id: ETSY_KEYSTRING,
+			client_id: env.ETSY_KEYSTRING,
 			refresh_token: refreshToken,
 		}),
 	});
