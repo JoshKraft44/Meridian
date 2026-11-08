@@ -9,7 +9,8 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "mcp": "tsx --env-file=.env mcp/server.ts",
-    "meta:check": "tsx --env-file=.env bin/meta-check.ts"
+    "meta:check": "tsx --env-file=.env bin/meta-check.ts",
+    "creatives:import": "tsx --env-file=.env bin/import-creatives.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
