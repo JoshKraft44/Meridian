@@ -170,7 +170,7 @@ export const actions = {
     const id = String((await request.formData()).get('id'));
     const updated = await db.socialPost.updateMany({
       where: { id, status: { in: ['DRAFT', 'FAILED'] } },
-      data: { status: 'SCHEDULED', scheduledFor: new Date(), error: null }
+      data: { status: 'SCHEDULED', scheduledFor: new Date(), error: null, attempts: 0 }
     });
     if (updated.count === 0) return fail(400, { error: 'Only drafts and failed posts can be published from here' });
     void publishPost(id);
