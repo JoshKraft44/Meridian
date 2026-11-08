@@ -16,10 +16,10 @@ export function formatCentsCompact(cents: number): string {
   const abs = Math.abs(cents);
   let formatted: string;
 
-  if (abs >= 100_000_00) {
-    formatted = `$${(abs / 100_000_00).toFixed(1)}M`;
-  } else if (abs >= 1_000_00) {
-    formatted = `$${(abs / 1_000_00).toFixed(1)}k`;
+  if (abs >= 100_000_000) {
+    formatted = `$${(abs / 100_000_000).toFixed(1)}M`;
+  } else if (abs >= 100_000) {
+    formatted = `$${(abs / 100_000).toFixed(1)}k`;
   } else {
     formatted = (abs / 100).toLocaleString('en-CA', {
       style: 'currency',
