@@ -3,7 +3,7 @@
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { onDestroy } from 'svelte';
-  import { cdnThumb, formatDateTime } from '$lib/utils';
+  import { albertaZone, cdnThumb, formatDateTime } from '$lib/utils';
   import { CAPTION_LIMIT, needsIgCrop, validatePost, type Format, type Platform } from '$lib/creatives';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -21,8 +21,8 @@
   function toEdmontonLocal(iso: string | null) {
     if (!iso) return defaultScheduleTime();
     const d = new Date(iso);
-    const day = d.toLocaleDateString('en-CA', { timeZone: 'America/Edmonton' });
-    const time = d.toLocaleTimeString('en-GB', { timeZone: 'America/Edmonton', hour: '2-digit', minute: '2-digit' });
+    const day = d.toLocaleDateString('en-CA', { timeZone: albertaZone(d) });
+    const time = d.toLocaleTimeString('en-GB', { timeZone: albertaZone(d), hour: '2-digit', minute: '2-digit' });
     return `${day}T${time}`;
   }
 
@@ -32,7 +32,7 @@
 
   function defaultScheduleTime() {
     const d = new Date(Date.now() + 24 * 60 * 60_000);
-    const day = d.toLocaleDateString('en-CA', { timeZone: 'America/Edmonton' });
+    const day = d.toLocaleDateString('en-CA', { timeZone: albertaZone(d) });
     return `${day}T09:00`;
   }
 

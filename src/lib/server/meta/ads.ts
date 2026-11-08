@@ -44,6 +44,20 @@ export async function uploadAdImage(account: AdAccount, imageUrl: string): Promi
   return first.hash;
 }
 
+function buildTargeting(platform: 'instagram' | 'facebook', t: Targeting) {
+  return {
+    geo_locations: { regions: t.regions.map((key) => ({ key })), location_types: ['home', 'recent'] },
+    age_min: t.ageMin,
+    age_max: t.ageMax,
+    locales: [1001], // English (All)
+    flexible_spec: [{ interests: t.interests }],
+    publisher_platforms: [platform],
+    ...(platform === 'instagram' ? { instagram_positions: ['stream'] } : { facebook_positions: ['feed'] }),
+    // Stay inside the audience above instead of letting Meta widen it
+    targeting_automation: { advantage_audience: 0 }
+  };
+}
+
 export async function createAdSet(
   account: AdAccount,
   opts: {
@@ -56,19 +70,7 @@ export async function createAdSet(
     targeting: Targeting;
   }
 ): Promise<string> {
-  const targeting = {
-    geo_locations: { regions: opts.targeting.regions.map((key) => ({ key })), location_types: ['home', 'recent'] },
-    age_min: opts.targeting.ageMin,
-    age_max: opts.targeting.ageMax,
-    locales: [1001], // English (All)
-    flexible_spec: [{ interests: opts.targeting.interests }],
-    publisher_platforms: [opts.platform],
-    ...(opts.platform === 'instagram'
-      ? { instagram_positions: ['stream'] }
-      : { facebook_positions: ['feed'] }),
-    // Stay inside the audience above instead of letting Meta widen it
-    targeting_automation: { advantage_audience: 0 }
-  };
+  const targeting = buildTargeting(opts.platform, opts.targeting);
 
   const res = await metaPost<{ id: string }>(`/${account.actId}/adsets`, account.creds, {
     name: opts.name,
@@ -134,6 +136,16 @@ export async function createAd(account: AdAccount, opts: { name: string; adSetId
     status: 'ACTIVE'
   });
   return res.id;
+}
+
+// Ad sets keep their budget and schedule; only who sees them changes
+export async function updateAdSetTargeting(
+  account: AdAccount,
+  adSetId: string,
+  platform: 'instagram' | 'facebook',
+  targeting: Targeting
+) {
+  await metaPost(`/${adSetId}`, account.creds, { targeting: JSON.stringify(buildTargeting(platform, targeting)) });
 }
 
 export async function setCampaignStatus(account: AdAccount, campaignId: string, status: 'ACTIVE' | 'PAUSED') {

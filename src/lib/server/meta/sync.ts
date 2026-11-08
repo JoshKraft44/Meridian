@@ -2,6 +2,7 @@ import { env } from '$env/dynamic/private';
 import { db } from '$lib/db';
 import { metaGetPages, MetaApiError, type MetaCredentials } from './api';
 import { normalizeAdAccountId } from './connection';
+import { albertaZone } from '$lib/utils';
 
 const BACKFILL_DAYS = 3 * 365; // Meta keeps ~37 months of insights
 const RESTATE_DAYS = 28; // attribution keeps shifting for this long, so re-pull it every run
@@ -52,7 +53,7 @@ function dollarsToCents(value: string | undefined): number {
 }
 
 function todayInEdmonton(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Edmonton' });
+  return new Date().toLocaleDateString('en-CA', { timeZone: albertaZone() });
 }
 
 function addDays(ymd: string, days: number): string {
