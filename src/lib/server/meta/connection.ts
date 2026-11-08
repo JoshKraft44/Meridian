@@ -1,4 +1,5 @@
 import { metaGet, debugToken, MetaApiError, type MetaCredentials, type MetaErrorKind, type TokenDebugInfo } from './api';
+import { albertaZone } from '../../utils';
 
 export interface MetaConfig {
   token: string;
@@ -68,6 +69,12 @@ export interface Capability {
   granted: boolean | null; // null when scopes couldn't be read
 }
 
+function last7DaysIncludingToday() {
+  const day = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: albertaZone(d) });
+  const now = new Date();
+  return { since: day(new Date(now.getTime() - 6 * 86400_000)), until: day(now) };
+}
+
 export function normalizeAdAccountId(id: string): string {
   return id.trim().replace(/^act_/, '');
 }
@@ -123,7 +130,8 @@ export async function checkMetaConnection(config: MetaConfig) {
         const r = await metaGet<{ data: { spend?: string; impressions?: string; clicks?: string }[] }>(
           `/${actId}/insights`,
           creds,
-          { date_preset: 'last_7d', level: 'account', fields: 'spend,impressions,clicks' }
+          // Meta's last_7d preset leaves out today, which hides ads that just started
+          { time_range: JSON.stringify(last7DaysIncludingToday()), level: 'account', fields: 'spend,impressions,clicks' }
         );
         const row = r.data[0];
         return {
