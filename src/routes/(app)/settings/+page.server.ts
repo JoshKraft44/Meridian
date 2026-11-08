@@ -9,17 +9,22 @@ export const load: PageServerLoad = async () => {
     update: {}
   });
 
-  const connection = await db.shopifyConnection.findFirst({
-    select: { shop: true, connectedAt: true, lastSyncedAt: true }
-  });
+  const [connection, etsyConnection, lastShopifySync, lastEtsySync] = await Promise.all([
+    db.shopifyConnection.findFirst({ select: { shop: true, connectedAt: true, lastSyncedAt: true } }),
+    db.etsyConnection.findFirst({ select: { shopName: true, connectedAt: true, lastSyncedAt: true } }),
+    db.syncRun.findFirst({
+      where: { platform: 'SHOPIFY', status: 'SUCCESS' },
+      orderBy: { finishedAt: 'desc' },
+      select: { finishedAt: true, ordersUpserted: true, payoutsSynced: true },
+    }),
+    db.syncRun.findFirst({
+      where: { platform: 'ETSY', status: 'SUCCESS' },
+      orderBy: { finishedAt: 'desc' },
+      select: { finishedAt: true, ordersUpserted: true },
+    }),
+  ]);
 
-  const lastSync = await db.syncRun.findFirst({
-    where: { status: 'SUCCESS' },
-    orderBy: { finishedAt: 'desc' },
-    select: { finishedAt: true, ordersUpserted: true, payoutsSynced: true }
-  });
-
-  return { settings, connection, lastSync };
+  return { settings, connection, etsyConnection, lastShopifySync, lastEtsySync };
 };
 
 export const actions = {
@@ -43,5 +48,10 @@ export const actions = {
   disconnect: async () => {
     await db.shopifyConnection.deleteMany();
     return { disconnected: true };
+  },
+
+  disconnectEtsy: async () => {
+    await db.etsyConnection.deleteMany();
+    return { etsyDisconnected: true };
   }
 } satisfies Actions;

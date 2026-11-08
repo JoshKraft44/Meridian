@@ -274,6 +274,18 @@ model ShopifyConnection {
   @@unique([shop])
 }
 
+model EtsyConnection {
+  id           String    @id @default(cuid())
+  shopId       String    @unique
+  shopName     String?
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+
+  connectedAt  DateTime  @default(now())
+  lastSyncedAt DateTime?
+}
+
 model Settings {
   id String @id @default(cuid())
   accentColor String @default("#c0392b")

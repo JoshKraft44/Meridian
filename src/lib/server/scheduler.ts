@@ -1,22 +1,21 @@
 import { runShopifySync } from './shopify/sync';
+import { runEtsySync } from './etsy/sync';
 
 const INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 let started = false;
 
+function runAllSyncs(manual = false) {
+	runShopifySync(manual).catch((err) => console.error('[sync:shopify] error:', err));
+	runEtsySync(manual).catch((err) => console.error('[sync:etsy] error:', err));
+}
+
 export function startScheduler(): void {
-  if (started) return;
-  started = true;
+	if (started) return;
+	started = true;
 
-  // First sync 30s after startup
-  setTimeout(() => {
-    runShopifySync().catch((err) => console.error('[sync] error:', err));
-  }, 30_000);
+	setTimeout(() => runAllSyncs(), 30_000);
+	setInterval(() => runAllSyncs(), INTERVAL_MS);
 
-  // Then every 6 hours
-  setInterval(() => {
-    runShopifySync().catch((err) => console.error('[sync] error:', err));
-  }, INTERVAL_MS);
-
-  console.log('[scheduler] started, first sync in 30s, then every 6h');
+	console.log('[scheduler] started, first sync in 30s, then every 6h');
 }
