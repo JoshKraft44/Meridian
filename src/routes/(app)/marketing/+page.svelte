@@ -200,6 +200,58 @@
         {/if}
       </section>
 
+      <!-- Campaigns -->
+      <section class="card p-5 space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-text-primary">Campaigns <span class="text-text-muted font-normal">· last 30 days</span></h2>
+          <span class="text-xs text-text-muted">
+            {data.lastSyncedAt ? `Synced ${formatDateTime(data.lastSyncedAt)}` : 'Not synced yet'}
+          </span>
+        </div>
+
+        {#if data.lastSyncError}
+          <p class="text-xs text-negative">Last sync failed: {data.lastSyncError}</p>
+        {/if}
+
+        {#if data.campaigns.length === 0}
+          <p class="text-xs text-text-muted">No campaigns on the ad account yet.</p>
+        {:else}
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-xs text-text-muted text-left">
+                  <th class="font-normal py-2">Campaign</th>
+                  <th class="font-normal py-2 text-right">Spend</th>
+                  <th class="font-normal py-2 text-right">Clicks</th>
+                  <th class="font-normal py-2 text-right">CPC</th>
+                  <th class="font-normal py-2 text-right" title="Reported by Meta, not confirmed by Shopify">Meta purchases</th>
+                  <th class="font-normal py-2 text-right" title="Meta-attributed purchase value ÷ spend">Meta ROAS</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-border">
+                {#each data.campaigns as c}
+                  <tr>
+                    <td class="py-2">
+                      <span class="text-text-primary">{c.name}</span>
+                      <span class="block text-xs {c.effectiveStatus === 'ACTIVE' ? 'text-positive' : 'text-text-muted'}">
+                        {(c.effectiveStatus ?? c.status ?? '—').toLowerCase().replace(/_/g, ' ')}
+                        {#if c.dailyBudgetCents}· {formatCents(c.dailyBudgetCents)}/day{/if}
+                      </span>
+                    </td>
+                    <td class="py-2 text-right text-text-secondary">{formatCents(c.spendCents)}</td>
+                    <td class="py-2 text-right text-text-secondary">{c.clicks.toLocaleString('en-CA')}</td>
+                    <td class="py-2 text-right text-text-secondary">{c.clicks ? formatCents(Math.round(c.spendCents / c.clicks)) : '—'}</td>
+                    <td class="py-2 text-right text-text-secondary">{c.metaPurchases}</td>
+                    <td class="py-2 text-right text-text-secondary">{c.spendCents ? (c.metaPurchaseValueCents / c.spendCents).toFixed(2) + '×' : '—'}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+          <p class="text-xs text-text-muted">Purchases and ROAS are Meta's own attribution. Shopify-confirmed numbers come later.</p>
+        {/if}
+      </section>
+
       <p class="text-xs text-text-muted">Checked {formatDateTime(data.checkedAt)}</p>
     {/if}
 

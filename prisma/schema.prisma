@@ -291,5 +291,41 @@ model Settings {
   accentColor String @default("#c0392b")
   excludeTaxesFromGross Boolean @default(false)
 
+  metaLastSyncedAt  DateTime?
+  metaLastSyncError String?
+
   updatedAt DateTime @updatedAt
+}
+
+model MetaCampaign {
+  id                  String    @id // Meta's campaign id
+  name                String
+  objective           String?
+  status              String? // what it's set to: ACTIVE, PAUSED, ...
+  effectiveStatus     String? // what Meta is actually doing with it
+  dailyBudgetCents    Int?
+  lifetimeBudgetCents Int?
+  createdTime         DateTime?
+
+  days MetaCampaignDay[]
+
+  syncedAt DateTime @updatedAt
+}
+
+// Meta-attributed numbers only. Never mix with Shopify-confirmed revenue.
+model MetaCampaignDay {
+  id         String       @id @default(cuid())
+  campaignId String
+  campaign   MetaCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  date       DateTime     @db.Date // ad account timezone (America/Edmonton)
+
+  spendCents             Int
+  impressions            Int
+  clicks                 Int
+  reach                  Int
+  metaPurchases          Int
+  metaPurchaseValueCents Int
+
+  @@unique([campaignId, date])
+  @@index([date])
 }
