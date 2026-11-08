@@ -197,6 +197,20 @@
           {:else if r.adSpend7d}
             <p class="text-xs text-negative">Insights: {r.adSpend7d.error.message}</p>
           {/if}
+
+          {#if r.pixels?.ok}
+            {#if r.pixels.data.length === 0}
+              <p class="text-xs text-warning">No Pixel linked. Meta can't attribute purchases to ads.</p>
+            {/if}
+            {#each r.pixels.data as px}
+              <p class="text-xs text-text-muted pt-1">
+                <span class="inline-block w-1.5 h-1.5 rounded-full mr-1 {px.last_fired_time ? 'bg-positive' : 'bg-warning'}"></span>
+                Pixel {px.name} · {px.last_fired_time ? `last fired ${formatDateTime(px.last_fired_time)}` : 'never fired'}
+              </p>
+            {/each}
+          {:else if r.pixels}
+            <p class="text-xs text-negative">Pixels: {r.pixels.error.message}</p>
+          {/if}
         {/if}
       </section>
 

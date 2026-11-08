@@ -60,4 +60,9 @@ if (r.adSpend7d?.ok) {
   const s = r.adSpend7d.data;
   console.log(`  ✓ insights 7d: $${(s.spendCents / 100).toFixed(2)} spend, ${s.impressions} impr, ${s.clicks} clicks`);
 } else if (r.adSpend7d) fail('insights', r.adSpend7d.error);
+
+if (r.pixels?.ok) {
+  if (r.pixels.data.length === 0) console.log('  ✗ no pixel linked to the ad account');
+  for (const px of r.pixels.data) console.log(`  ✓ pixel ${px.name} (${px.id}), last fired ${px.last_fired_time ?? 'never'}`);
+} else if (r.pixels) fail('pixels', r.pixels.error);
 console.log();
