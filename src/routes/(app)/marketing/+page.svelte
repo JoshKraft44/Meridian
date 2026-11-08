@@ -52,6 +52,58 @@
       </section>
     {:else}
       {@const r = data.report}
+      {@const a = data.adsVsShopify}
+
+      <!-- Ads vs Shopify -->
+      <section class="card p-5 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-text-primary">Ads vs Shopify</h2>
+          <div class="flex rounded-md border border-border overflow-hidden text-xs">
+            {#each data.periods as p}
+              <a
+                href="?days={p}"
+                data-sveltekit-noscroll
+                class="px-2.5 py-1 transition-colors duration-150 {data.days === p ? 'bg-elevated text-text-primary' : 'text-text-muted hover:text-text-secondary'}"
+              >{p}d</a>
+            {/each}
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div class="rounded-md border border-border p-3">
+            <p class="text-[11px] text-text-muted uppercase tracking-wider">Ad spend</p>
+            <p class="text-lg font-semibold text-text-primary mt-1">{formatCents(a.spendCents)}</p>
+            <p class="text-[11px] text-text-muted">{a.clicks.toLocaleString('en-CA')} clicks{#if a.clicks} · {formatCents(Math.round(a.spendCents / a.clicks))} CPC{/if}</p>
+          </div>
+          <div class="rounded-md border border-border p-3">
+            <p class="text-[11px] text-text-muted uppercase tracking-wider">Shopify revenue</p>
+            <p class="text-lg font-semibold text-text-primary mt-1">{formatCents(a.shopifyRevenueCents)}</p>
+            <p class="text-[11px] text-text-muted">{a.shopifyOrders} orders</p>
+          </div>
+          <div class="rounded-md border border-border p-3" title="Shopify revenue ÷ ad spend. Counts every sale, not just ones Meta claims.">
+            <p class="text-[11px] text-text-muted uppercase tracking-wider">Blended ROAS</p>
+            <p class="text-lg font-semibold text-text-primary mt-1">{a.spendCents ? (a.shopifyRevenueCents / a.spendCents).toFixed(2) + '×' : '—'}</p>
+            <p class="text-[11px] text-text-muted">{a.spendCents && a.shopifyOrders ? `${formatCents(Math.round(a.spendCents / a.shopifyOrders))} ad spend per order` : 'no spend in this period'}</p>
+          </div>
+          <div class="rounded-md border border-border p-3">
+            <p class="text-[11px] text-text-muted uppercase tracking-wider">Net before ads</p>
+            <p class="text-lg font-semibold text-text-primary mt-1">{formatCents(a.shopifyNetCents)}</p>
+            <p class="text-[11px] text-text-muted">Shopify, after fees, shipping, refunds, expenses</p>
+          </div>
+          <div class="rounded-md border border-border p-3">
+            <p class="text-[11px] text-text-muted uppercase tracking-wider">Net after ads</p>
+            <p class="text-lg font-semibold mt-1 {a.shopifyNetCents - a.spendCents < 0 ? 'text-negative' : 'text-text-primary'}">{formatCents(a.shopifyNetCents - a.spendCents)}</p>
+            {#if a.missingShippingCostCount}
+              <p class="text-[11px] text-warning">{a.missingShippingCostCount} orders missing shipping cost</p>
+            {/if}
+          </div>
+          <div class="rounded-md border border-border p-3" title="Reported by Meta's own attribution. Not confirmed by Shopify, and can overlap with organic sales.">
+            <p class="text-[11px] text-text-muted uppercase tracking-wider">Meta-attributed</p>
+            <p class="text-lg font-semibold text-text-secondary mt-1">{formatCents(a.metaPurchaseValueCents)}</p>
+            <p class="text-[11px] text-text-muted">{a.metaPurchases} purchases{#if a.spendCents} · {(a.metaPurchaseValueCents / a.spendCents).toFixed(2)}× Meta ROAS{/if}</p>
+          </div>
+        </div>
+      </section>
 
       <!-- Token -->
       <section class="card p-5 space-y-3">
@@ -214,7 +266,7 @@
       <!-- Campaigns -->
       <section class="card p-5 space-y-3">
         <div class="flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-text-primary">Campaigns <span class="text-text-muted font-normal">· last 30 days</span></h2>
+          <h2 class="text-sm font-semibold text-text-primary">Campaigns <span class="text-text-muted font-normal">· last {data.days} days</span></h2>
           <span class="text-xs text-text-muted">
             {data.lastSyncedAt ? `Synced ${formatDateTime(data.lastSyncedAt)}` : 'Not synced yet'}
           </span>
