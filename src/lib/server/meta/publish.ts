@@ -14,6 +14,9 @@ interface Accounts {
 
 let cachedAccounts: { value: Accounts; at: number } | null = null;
 
+const MAX_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 20 * 60_000;
+
 function systemCreds(): MetaCredentials {
   if (!env.META_ACCESS_TOKEN) throw new Error('META_ACCESS_TOKEN not set');
   return { token: env.META_ACCESS_TOKEN, appSecret: env.META_SECRET };
@@ -92,8 +95,11 @@ async function publishInstagram(post: PostWithMedia, igUserId: string) {
   }
 
   const published = await metaPost<{ id: string }>(`/${igUserId}/media_publish`, creds, { creation_id: containerId });
-  const { permalink } = await metaGet<{ permalink?: string }>(`/${published.id}`, creds, { fields: 'permalink' });
-  return { externalId: published.id, permalink: permalink ?? null };
+  // It's live at this point, so a failed lookup mustn't count as a failed post (a retry would double-post)
+  const permalink = await metaGet<{ permalink?: string }>(`/${published.id}`, creds, { fields: 'permalink' })
+    .then((r) => r.permalink ?? null)
+    .catch(() => null);
+  return { externalId: published.id, permalink };
 }
 
 async function publishFacebook(post: PostWithMedia, pageId: string, pageToken: string) {
@@ -125,9 +131,11 @@ async function publishFacebook(post: PostWithMedia, pageId: string, pageToken: s
     }));
   }
 
-  const { permalink_url } = await metaGet<{ permalink_url?: string }>(`/${postId}`, creds, { fields: 'permalink_url' });
-  const permalink = permalink_url?.startsWith('/') ? `https://www.facebook.com${permalink_url}` : permalink_url;
-  return { externalId: postId, permalink: permalink ?? null };
+  const permalinkUrl = await metaGet<{ permalink_url?: string }>(`/${postId}`, creds, { fields: 'permalink_url' })
+    .then((r) => r.permalink_url ?? null)
+    .catch(() => null);
+  const permalink = permalinkUrl?.startsWith('/') ? `https://www.facebook.com${permalinkUrl}` : permalinkUrl;
+  return { externalId: postId, permalink };
 }
 
 // Claims the post first so the scheduler and a "publish now" click can't both send it.
@@ -161,8 +169,17 @@ export async function publishPost(postId: string): Promise<void> {
     console.log(`[publish] ${post.platform} ${post.format} ${postId} published`);
   } catch (err) {
     const message = err instanceof MetaApiError ? `[${err.kind}] ${err.message}` : (err as Error).message;
-    await db.socialPost.update({ where: { id: postId }, data: { status: 'FAILED', error: message } });
-    console.error(`[publish] ${postId} failed:`, message);
+    const attempts = post.attempts + 1;
+    // Meta sometimes blocks API access for a while (e.g. after a security check). A bad token won't fix itself.
+    const retry = attempts < MAX_ATTEMPTS && !(err instanceof MetaApiError && err.kind === 'auth');
+
+    await db.socialPost.update({
+      where: { id: postId },
+      data: retry
+        ? { status: 'SCHEDULED', scheduledFor: new Date(Date.now() + RETRY_DELAY_MS), attempts, error: `Retrying: ${message}` }
+        : { status: 'FAILED', attempts, error: message }
+    });
+    console.error(`[publish] ${postId} attempt ${attempts} failed${retry ? ', retrying in 20m' : ''}:`, message);
   }
 }
 

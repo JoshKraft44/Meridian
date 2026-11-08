@@ -392,6 +392,7 @@ model SocialPost {
   externalId   String? // IG media id / FB post id
   permalink    String?
   error        String?
+  attempts     Int            @default(0)
 
   // Rows composed together (IG + FB versions of one idea) share a group
   groupId String?
