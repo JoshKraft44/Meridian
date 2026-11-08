@@ -31,10 +31,7 @@
   <div class="px-8 py-6 max-w-3xl mx-auto space-y-6">
 
     <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-xl font-semibold text-text-primary">Marketing</h1>
-        <p class="text-xs text-text-muted mt-1">Meta connection check</p>
-      </div>
+      <h2 class="text-sm font-semibold text-text-primary">Meta connection</h2>
       {#if data.configured}
         <button class="btn-outline text-xs" onclick={recheck} disabled={refreshing}>
           {refreshing ? 'Checking…' : 'Re-check'}

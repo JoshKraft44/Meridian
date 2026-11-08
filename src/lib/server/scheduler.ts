@@ -1,6 +1,7 @@
 import { runShopifySync } from './shopify/sync';
 import { runEtsySync } from './etsy/sync';
 import { runMetaSync } from './meta/sync';
+import { publishDuePosts } from './meta/publish';
 
 const INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
@@ -18,6 +19,11 @@ export function startScheduler(): void {
 
 	setTimeout(() => runAllSyncs(), 30_000);
 	setInterval(() => runAllSyncs(), INTERVAL_MS);
+
+	// Scheduled posts go out within a minute of their time
+	setInterval(() => {
+		publishDuePosts().catch((err) => console.error('[publish] error:', err));
+	}, 60_000);
 
 	console.log('[scheduler] started, first sync in 30s, then every 6h');
 }

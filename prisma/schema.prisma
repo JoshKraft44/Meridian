@@ -353,8 +353,60 @@ model Creative {
   productId String?
   product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
+  posts SocialPostMedia[]
+
   createdAt DateTime @default(now())
 
   @@index([createdAt])
   @@index([productId])
+}
+
+enum SocialPlatform {
+  INSTAGRAM
+  FACEBOOK
+}
+
+enum PostFormat {
+  SINGLE // one photo
+  CAROUSEL // 2-10 photos
+  REEL // one video
+}
+
+enum PostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+}
+
+// One row per platform. Composing for IG + FB makes two posts.
+model SocialPost {
+  id           String         @id @default(cuid())
+  platform     SocialPlatform
+  format       PostFormat
+  caption      String
+  status       PostStatus     @default(DRAFT)
+  scheduledFor DateTime?
+  publishedAt  DateTime?
+  externalId   String? // IG media id / FB post id
+  permalink    String?
+  error        String?
+
+  media SocialPostMedia[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, scheduledFor])
+}
+
+model SocialPostMedia {
+  postId     String
+  post       SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  creativeId String
+  creative   Creative   @relation(fields: [creativeId], references: [id], onDelete: Restrict)
+  position   Int
+
+  @@id([postId, position])
 }

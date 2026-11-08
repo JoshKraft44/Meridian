@@ -92,6 +92,24 @@ export async function metaGet<T>(
   }
 }
 
+// Writes are never retried: a timeout after Meta accepted the request would double-post.
+export async function metaPost<T>(
+  path: string,
+  creds: MetaCredentials,
+  params: Record<string, string>
+): Promise<T> {
+  const body = new URLSearchParams(params);
+  if (creds.appSecret) body.set('appsecret_proof', appSecretProof(creds.token, creds.appSecret));
+
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${creds.token}` },
+    body
+  });
+  if (!res.ok) throw await toError(res);
+  return res.json() as Promise<T>;
+}
+
 // Follows cursor paging on list edges (campaigns, insights, ...)
 export async function* metaGetPages<T>(
   path: string,
