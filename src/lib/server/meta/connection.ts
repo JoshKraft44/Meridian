@@ -32,6 +32,12 @@ export interface MetaPage {
   };
 }
 
+export interface MetaPixel {
+  id: string;
+  name: string;
+  last_fired_time?: string;
+}
+
 export interface MetaAdAccount {
   id: string;
   name: string;
@@ -101,11 +107,12 @@ export async function checkMetaConnection(config: MetaConfig) {
 
   let adAccount: Check<MetaAdAccount> | null = null;
   let adSpend7d: Check<{ spendCents: number; impressions: number; clicks: number }> | null = null;
+  let pixels: Check<MetaPixel[]> | null = null;
 
   if (config.adAccountId) {
     const actId = `act_${normalizeAdAccountId(config.adAccountId)}`;
 
-    [adAccount, adSpend7d] = await Promise.all([
+    [adAccount, adSpend7d, pixels] = await Promise.all([
       check(() =>
         metaGet<MetaAdAccount>(`/${actId}`, creds, {
           fields: 'id,name,account_status,currency,timezone_name,amount_spent,disable_reason'
@@ -124,11 +131,15 @@ export async function checkMetaConnection(config: MetaConfig) {
           impressions: row?.impressions ? parseInt(row.impressions) : 0,
           clicks: row?.clicks ? parseInt(row.clicks) : 0
         };
-      })
+      }),
+      // Pixels linked to the ad account. Empty means purchases can't be attributed.
+      check(() =>
+        metaGet<{ data: MetaPixel[] }>(`/${actId}/adspixels`, creds, { fields: 'id,name,last_fired_time' }).then((r) => r.data)
+      )
     ]);
   }
 
-  return { tokenInfo, me, scopes, capabilities, pages, adAccount, adSpend7d };
+  return { tokenInfo, me, scopes, capabilities, pages, adAccount, adSpend7d, pixels };
 }
 
 export type MetaConnectionReport = Awaited<ReturnType<typeof checkMetaConnection>>;
