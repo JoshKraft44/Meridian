@@ -50,6 +50,30 @@ export function formatDateTime(date: Date | string): string {
   });
 }
 
+// "2026-11-08T09:30" from a datetime-local input, read as Edmonton wall time
+export function edmontonLocalToDate(local: string): Date {
+  const asUtc = new Date(`${local}:00Z`);
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: TZ,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+      .formatToParts(asUtc)
+      .map((p) => [p.type, p.value])
+  );
+  const wallMs = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute);
+  return new Date(asUtc.getTime() - (wallMs - asUtc.getTime()));
+}
+
+export function cdnThumb(url: string, width: number): string {
+  return `${url}${url.includes('?') ? '&' : '?'}width=${width}`;
+}
+
 export function startOfDayEdmonton(date: Date): Date {
   const str = date.toLocaleDateString('en-CA', { timeZone: TZ });
   return new Date(`${str}T00:00:00-07:00`);
