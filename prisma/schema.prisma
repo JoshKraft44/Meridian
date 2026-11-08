@@ -209,8 +209,9 @@ model Product {
   linkedProduct   Product? @relation("ProductLink", fields: [linkedProductId], references: [id])
   linkedBy        Product? @relation("ProductLink")
 
-  images ProductImage[]
-  notes  ProductNote[]
+  images    ProductImage[]
+  notes     ProductNote[]
+  creatives Creative[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -328,4 +329,32 @@ model MetaCampaignDay {
 
   @@unique([campaignId, date])
   @@index([date])
+}
+
+enum CreativeKind {
+  IMAGE
+  VIDEO
+}
+
+// Photos/videos for posts and ads. Hosted on Shopify Files so Meta can fetch them by URL.
+model Creative {
+  id            String       @id @default(cuid())
+  kind          CreativeKind
+  url           String
+  shopifyFileId String       @unique
+  filename      String
+  sizeBytes     Int?
+  width         Int?
+  height        Int?
+  tags          String[]
+  notes         String?
+
+  // The antler in the shot, if it's a specific listing. Used to flag ads once it sells.
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([productId])
 }
