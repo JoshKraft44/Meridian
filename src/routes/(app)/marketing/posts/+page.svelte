@@ -17,6 +17,19 @@
   let scheduledAt = $state(defaultScheduleTime());
   let submitting = $state(false);
 
+  // ISO -> value for a datetime-local input, in Edmonton time
+  function toEdmontonLocal(iso: string | null) {
+    if (!iso) return defaultScheduleTime();
+    const d = new Date(iso);
+    const day = d.toLocaleDateString('en-CA', { timeZone: 'America/Edmonton' });
+    const time = d.toLocaleTimeString('en-GB', { timeZone: 'America/Edmonton', hour: '2-digit', minute: '2-digit' });
+    return `${day}T${time}`;
+  }
+
+  function platformLabel(platforms: string[]) {
+    return platforms.map((p) => (p === 'INSTAGRAM' ? 'Instagram' : 'Facebook')).join(' + ');
+  }
+
   function defaultScheduleTime() {
     const d = new Date(Date.now() + 24 * 60 * 60_000);
     const day = d.toLocaleDateString('en-CA', { timeZone: 'America/Edmonton' });
@@ -28,6 +41,8 @@
   let pickable = $derived(data.creatives.filter((c) => c.kind === wantedKind));
   let selectedCreatives = $derived(selected.map((id) => data.creatives.find((c) => c.id === id)).filter((c) => c !== undefined));
   let hashtags = $derived(caption.match(/#\w+/g)?.length ?? 0);
+  // Errors from suggestion cards show on the card, not here
+  let composerError = $derived(form?.error && !('groupId' in form) ? form.error : null);
 
   let problem = $derived.by(() => {
     if (platforms.length === 0) return 'Pick at least one platform';
@@ -78,6 +93,64 @@
 
 <div class="flex-1 overflow-y-auto">
   <div class="px-8 py-6 max-w-5xl mx-auto space-y-6">
+
+    {#if data.suggestions.length}
+      <section class="space-y-3">
+        <div>
+          <h2 class="text-sm font-semibold text-text-primary">Suggestions <span class="text-text-muted font-normal">· {data.suggestions.length} to review</span></h2>
+          <p class="text-xs text-text-muted mt-1">Drafted by Claude. Edit and approve, or leave feedback and ask for a rewrite.</p>
+        </div>
+
+        {#each data.suggestions as sug (sug.groupId)}
+          {@const cropped = sug.platforms.includes('INSTAGRAM')}
+          <div class="card p-4 space-y-3">
+            <div class="flex items-center gap-2 text-xs">
+              <span class="text-text-primary">{platformLabel(sug.platforms)}</span>
+              <span class="text-text-muted">· {sug.format.toLowerCase()}{sug.media.length > 1 ? ` (${sug.media.length})` : ''}</span>
+              {#if sug.suggestedFor}<span class="text-text-muted">· suggested for {formatDateTime(sug.suggestedFor)}</span>{/if}
+            </div>
+
+            <div class="flex gap-2 overflow-x-auto pb-1">
+              {#each sug.media as m}
+                <div class="shrink-0 w-28 rounded-md overflow-hidden bg-elevated {cropped && m.kind === 'IMAGE' && needsIgCrop(m) ? 'aspect-[4/5]' : ''}">
+                  {#if m.kind === 'IMAGE'}
+                    <img src={cdnThumb(m.url, 300)} alt="" class="w-full h-full object-cover" />
+                  {:else}
+                    <video src={m.url} preload="metadata" muted class="w-full"></video>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+
+            {#if sug.rationale}
+              <p class="text-xs text-text-muted"><span class="text-text-secondary">Why:</span> {sug.rationale}</p>
+            {/if}
+
+            <form method="POST" action="?/approveSuggestion" class="space-y-2" use:enhance={() => async ({ update }) => update({ reset: false })}>
+              <input type="hidden" name="groupId" value={sug.groupId} />
+              <textarea name="caption" rows="6" class="input w-full text-sm resize-y">{sug.caption}</textarea>
+              <div class="flex flex-wrap items-center gap-3">
+                <input type="datetime-local" name="scheduledAt" value={toEdmontonLocal(sug.suggestedFor)} class="input text-xs" />
+                <span class="text-[11px] text-text-muted">Edmonton time</span>
+                <button type="submit" class="btn-primary text-xs ml-auto">Approve & schedule</button>
+              </div>
+              {#if form?.error && 'groupId' in form && form.groupId === sug.groupId}
+                <p class="text-xs text-negative">{form.error}</p>
+              {/if}
+            </form>
+
+            <form method="POST" action="?/suggestionFeedback" class="flex gap-2 items-start" use:enhance={() => async ({ update }) => update({ reset: false })}>
+              <input type="hidden" name="groupId" value={sug.groupId} />
+              <textarea name="feedback" rows="1" class="input flex-1 text-xs resize-y" placeholder="Feedback for a rewrite (tone, photo swap, timing…)">{sug.feedback ?? ''}</textarea>
+              <button type="submit" class="btn-outline text-xs shrink-0">
+                {form && 'feedbackSaved' in form && form.feedbackSaved === sug.groupId ? 'Saved' : 'Save feedback'}
+              </button>
+              <button type="submit" formaction="?/dismissSuggestion" class="text-xs text-negative/80 hover:text-negative shrink-0 py-1.5">Dismiss</button>
+            </form>
+          </div>
+        {/each}
+      </section>
+    {/if}
 
     <form
       method="POST"
@@ -200,9 +273,9 @@
       </div>
 
       <div class="flex items-center justify-between gap-4">
-        <p class="text-xs {form?.error ? 'text-negative' : 'text-text-muted'}">
-          {form?.error ?? problem ?? ''}
-          {#if !form?.error && !problem && form && 'created' in form}
+        <p class="text-xs {composerError ? 'text-negative' : 'text-text-muted'}">
+          {composerError ?? problem ?? ''}
+          {#if !composerError && !problem && form && 'created' in form}
             {form.when === 'draft' ? 'Saved' : form.when === 'now' ? 'Publishing…' : 'Scheduled'}
           {/if}
         </p>
