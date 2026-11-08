@@ -5,9 +5,40 @@ import { validatePost, type Format, type Platform } from '$lib/creatives';
 import { edmontonLocalToDate } from '$lib/utils';
 import { publishPost } from '$lib/server/meta/publish';
 
+const mediaInclude = {
+  media: { orderBy: { position: 'asc' as const }, include: { creative: { select: { url: true, kind: true, width: true, height: true } } } }
+};
+
+// Claude's drafts, grouped so the IG + FB versions of one idea are reviewed together
+async function loadSuggestions() {
+  const drafts = await db.socialPost.findMany({
+    where: { status: 'DRAFT', suggestedBy: { not: null } },
+    orderBy: [{ scheduledFor: 'asc' }, { createdAt: 'asc' }],
+    include: mediaInclude
+  });
+
+  const groups = new Map<string, (typeof drafts)[number][]>();
+  for (const d of drafts) {
+    const key = d.groupId ?? d.id;
+    groups.set(key, [...(groups.get(key) ?? []), d]);
+  }
+
+  return [...groups.entries()].map(([groupId, rows]) => ({
+    groupId,
+    platforms: rows.map((r) => r.platform),
+    format: rows[0].format,
+    caption: rows[0].caption,
+    rationale: rows[0].rationale,
+    feedback: rows[0].feedback,
+    suggestedFor: rows[0].scheduledFor?.toISOString() ?? null,
+    media: rows[0].media.map((m) => m.creative)
+  }));
+}
+
 export const load: PageServerLoad = async () => {
-  const [posts, creatives] = await Promise.all([
+  const [posts, creatives, suggestions] = await Promise.all([
     db.socialPost.findMany({
+      where: { NOT: { status: 'DRAFT', suggestedBy: { not: null } } },
       orderBy: { createdAt: 'desc' },
       take: 50,
       include: { media: { orderBy: { position: 'asc' }, include: { creative: { select: { url: true, kind: true } } } } }
@@ -15,7 +46,8 @@ export const load: PageServerLoad = async () => {
     db.creative.findMany({
       orderBy: { createdAt: 'desc' },
       select: { id: true, kind: true, url: true, width: true, height: true, filename: true, tags: true }
-    })
+    }),
+    loadSuggestions()
   ]);
 
   return {
@@ -31,7 +63,8 @@ export const load: PageServerLoad = async () => {
       error: p.error,
       media: p.media.map((m) => m.creative)
     })),
-    creatives
+    creatives,
+    suggestions
   };
 };
 
@@ -69,10 +102,12 @@ export const actions = {
       scheduledFor = new Date();
     }
 
+    const groupId = crypto.randomUUID();
     const created = await db.$transaction(
       platforms.map((platform) =>
         db.socialPost.create({
           data: {
+            groupId,
             platform,
             format,
             caption,
@@ -88,6 +123,47 @@ export const actions = {
     if (when === 'now') for (const p of created) void publishPost(p.id);
 
     return { created: created.length, when };
+  },
+
+  approveSuggestion: async ({ request }) => {
+    const form = await request.formData();
+    const groupId = String(form.get('groupId'));
+    const caption = String(form.get('caption') ?? '').trim();
+    const local = String(form.get('scheduledAt') ?? '');
+
+    const rows = await db.socialPost.findMany({
+      where: { groupId, status: 'DRAFT' },
+      include: { media: { include: { creative: { select: { kind: true } } } } }
+    });
+    if (rows.length === 0) return fail(404, { error: 'Suggestion not found' });
+
+    for (const r of rows) {
+      const problem = validatePost({ platform: r.platform, format: r.format, caption, media: r.media.map((m) => m.creative) });
+      if (problem) return fail(400, { error: problem, groupId });
+    }
+
+    if (!local) return fail(400, { error: 'Pick a time', groupId });
+    const scheduledFor = edmontonLocalToDate(local);
+    if (scheduledFor.getTime() < Date.now()) return fail(400, { error: 'That time has already passed', groupId });
+
+    await db.socialPost.updateMany({
+      where: { groupId, status: 'DRAFT' },
+      data: { caption, scheduledFor, status: 'SCHEDULED' }
+    });
+    return { approved: groupId };
+  },
+
+  suggestionFeedback: async ({ request }) => {
+    const form = await request.formData();
+    const groupId = String(form.get('groupId'));
+    const feedback = String(form.get('feedback') ?? '').trim();
+    await db.socialPost.updateMany({ where: { groupId, status: 'DRAFT' }, data: { feedback: feedback || null } });
+    return { feedbackSaved: groupId };
+  },
+
+  dismissSuggestion: async ({ request }) => {
+    const groupId = String((await request.formData()).get('groupId'));
+    await db.socialPost.deleteMany({ where: { groupId, status: 'DRAFT' } });
   },
 
   publishNow: async ({ request }) => {

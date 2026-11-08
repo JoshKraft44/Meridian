@@ -393,12 +393,21 @@ model SocialPost {
   permalink    String?
   error        String?
 
+  // Rows composed together (IG + FB versions of one idea) share a group
+  groupId String?
+
+  // Drafts written by Claude for review: why it was suggested, and notes back for a rewrite
+  suggestedBy String?
+  rationale   String?
+  feedback    String?
+
   media SocialPostMedia[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([status, scheduledFor])
+  @@index([groupId])
 }
 
 model SocialPostMedia {
