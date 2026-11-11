@@ -442,6 +442,7 @@ model GeneratedImage {
   presetName     String
   prompt         String
   model          String
+  imageSize      String   @default("1K")
   aspectRatio    String
   bytes          Bytes
   mimeType       String

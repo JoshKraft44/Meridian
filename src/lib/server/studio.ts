@@ -2,7 +2,7 @@ import { env } from '$env/dynamic/private';
 import { db } from '$lib/db';
 import { appAdmin } from './shopify/appAdmin';
 import { createStagedUpload, uploadToStagedTarget, createFileAndWait } from './shopify/files';
-import { generateImage, type ImageModel } from './gemini';
+import { generateImage, type ImageModel, type ImageSize } from './gemini';
 
 export type AntlerCount = 'one' | 'pair' | 'set';
 
@@ -11,6 +11,7 @@ export const GENERATED_SELECT = {
   id: true,
   presetName: true,
   model: true,
+  imageSize: true,
   status: true,
   creativeId: true,
   parentId: true,
@@ -151,6 +152,7 @@ export async function generateScene(opts: {
   prompt: string;
   count: AntlerCount;
   model: ImageModel;
+  imageSize: ImageSize;
   aspectRatio: string;
 }) {
   if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not set');
@@ -167,7 +169,14 @@ export async function generateScene(opts: {
 
   const prompt = buildPrompt(opts.prompt, opts.count, sources.length - 1);
   const images = await Promise.all(sources.map((m) => fetchReference(m.url)));
-  const out = await generateImage({ apiKey: env.GEMINI_API_KEY, model: opts.model, prompt, images, aspectRatio: opts.aspectRatio });
+  const out = await generateImage({
+    apiKey: env.GEMINI_API_KEY,
+    model: opts.model,
+    prompt,
+    images,
+    aspectRatio: opts.aspectRatio,
+    imageSize: opts.imageSize
+  });
 
   return db.generatedImage.create({
     data: {
@@ -176,6 +185,7 @@ export async function generateScene(opts: {
       presetName: opts.presetName,
       prompt,
       model: opts.model,
+      imageSize: opts.imageSize,
       aspectRatio: opts.aspectRatio,
       bytes: out.bytes,
       mimeType: out.mimeType
@@ -186,7 +196,7 @@ export async function generateScene(opts: {
 
 // Edits an earlier generated image. The model gets that image, the original reference photos,
 // the original scene prompt and every change asked for so far, so nothing drifts from the real antler.
-export async function amendScene(opts: { imageId: string; instruction: string; model: ImageModel }) {
+export async function amendScene(opts: { imageId: string; instruction: string; model: ImageModel; imageSize: ImageSize }) {
   if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not set');
 
   const parent = await db.generatedImage.findUniqueOrThrow({ where: { id: opts.imageId } });
@@ -225,7 +235,14 @@ ${parent.prompt}`;
     { bytes: Buffer.from(parent.bytes), mimeType: parent.mimeType },
     ...(await Promise.all(references.map((m) => fetchReference(m.url))))
   ];
-  const out = await generateImage({ apiKey: env.GEMINI_API_KEY, model: opts.model, prompt, images, aspectRatio: parent.aspectRatio });
+  const out = await generateImage({
+    apiKey: env.GEMINI_API_KEY,
+    model: opts.model,
+    prompt,
+    images,
+    aspectRatio: parent.aspectRatio,
+    imageSize: opts.imageSize
+  });
 
   return db.generatedImage.create({
     data: {
@@ -234,6 +251,7 @@ ${parent.prompt}`;
       presetName: parent.presetName,
       prompt: parent.prompt,
       model: opts.model,
+      imageSize: opts.imageSize,
       aspectRatio: parent.aspectRatio,
       bytes: out.bytes,
       mimeType: out.mimeType,

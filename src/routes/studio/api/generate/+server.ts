@@ -1,7 +1,7 @@
 import type { RequestHandler } from './$types';
 import { json, error } from '@sveltejs/kit';
 import { generateScene, type AntlerCount } from '$lib/server/studio';
-import { IMAGE_MODELS, type ImageModel } from '$lib/server/gemini';
+import { IMAGE_MODELS, sizeFor, type ImageModel } from '$lib/server/gemini';
 
 const COUNTS: AntlerCount[] = ['one', 'pair', 'set'];
 const RATIOS = ['4:5', '1:1', '3:4'];
@@ -12,6 +12,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   const body = await request.json();
   if (!body.productId || !Array.isArray(body.sourceMediaIds) || !body.prompt?.trim()) error(400, 'Missing details');
 
+  const model: ImageModel = body.model in IMAGE_MODELS ? body.model : 'fast';
+
   try {
     const image = await generateScene({
       productId: body.productId,
@@ -19,7 +21,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
       presetName: String(body.presetName ?? 'Custom'),
       prompt: String(body.prompt),
       count: COUNTS.includes(body.count) ? body.count : 'one',
-      model: body.model in IMAGE_MODELS ? (body.model as ImageModel) : 'fast',
+      model,
+      imageSize: sizeFor(model, body.imageSize),
       aspectRatio: RATIOS.includes(body.aspectRatio) ? body.aspectRatio : '4:5'
     });
     return json(image);
