@@ -450,5 +450,10 @@ model GeneratedImage {
   creativeId     String?
   createdAt      DateTime @default(now())
 
+  // Amendments: an edit of an earlier generated image, with the change that was asked for.
+  // prompt stays the original scene prompt so the whole chain can be replayed.
+  parentId    String?
+  instruction String?
+
   @@index([productGid, createdAt])
 }

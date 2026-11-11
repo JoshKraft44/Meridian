@@ -5,7 +5,16 @@
 
   type Media = { id: string; alt: string | null; url: string; width: number; height: number };
   type Preset = { id: string; name: string; description: string; prompt: string; builtIn: boolean };
-  type Generated = { id: string; presetName: string; model: string; status: string; creativeId: string | null; createdAt: string };
+  type Generated = {
+    id: string;
+    presetName: string;
+    model: string;
+    status: string;
+    creativeId: string | null;
+    parentId: string | null;
+    instruction: string | null;
+    createdAt: string;
+  };
   type Pending = { tempId: string; presetName: string; error?: string };
   type Count = 'one' | 'pair' | 'set';
 
@@ -196,6 +205,51 @@
 
   let working = $state<Record<string, string>>({});
 
+  let amendText = $state('');
+  let amending = $state(false);
+  let amendError = $state('');
+  let amendBox = $state<HTMLTextAreaElement | null>(null);
+
+  let showingGenerated = $derived(showing.kind === 'generated' ? generated.find((g) => g.id === (showing as { id: string }).id) ?? null : null);
+
+  // Preset, then every change made on the way to this version
+  let lineage = $derived.by(() => {
+    const steps: string[] = [];
+    let current = showingGenerated;
+    while (current) {
+      if (current.instruction) steps.unshift(current.instruction);
+      current = current.parentId ? generated.find((g) => g.id === current!.parentId) ?? null : null;
+    }
+    return steps;
+  });
+
+  function openForAmend(g: Generated) {
+    showing = { kind: 'generated', id: g.id };
+    view = 'single';
+    amendError = '';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setTimeout(() => amendBox?.focus(), 300);
+  }
+
+  async function amend() {
+    if (!showingGenerated || !amendText.trim()) return;
+    amending = true;
+    amendError = '';
+    try {
+      const image = await api<Generated>(`/studio/api/images/${showingGenerated.id}/amend`, {
+        method: 'POST',
+        body: JSON.stringify({ instruction: amendText, model })
+      });
+      generated = [image, ...generated];
+      showing = { kind: 'generated', id: image.id };
+      amendText = '';
+    } catch (err) {
+      amendError = (err as Error).message;
+    } finally {
+      amending = false;
+    }
+  }
+
   async function act(img: Generated, action: 'add' | 'library' | 'discard') {
     working = { ...working, [img.id]: action };
     try {
@@ -295,6 +349,33 @@
               <button class="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 text-white text-lg" onclick={() => step(1)} aria-label="Next photo">›</button>
             {/if}
           </div>
+          {#if showingGenerated}
+            <div class="card p-4 space-y-3">
+              <p class="text-xs text-text-muted">
+                <span class="text-text-secondary">{showingGenerated.presetName}</span>
+                {#each lineage as change, i}
+                  <span> → </span><span class="text-text-secondary" title={change}>{i + 1}. {change.length > 60 ? change.slice(0, 60) + '…' : change}</span>
+                {/each}
+              </p>
+              <textarea
+                bind:this={amendBox}
+                bind:value={amendText}
+                rows="2"
+                class="input w-full text-sm resize-y"
+                placeholder="Amend this image, e.g. warmer light, move the mug further back, less clutter on the table"
+                onkeydown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) amend(); }}
+              ></textarea>
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-[11px] {amendError ? 'text-negative' : 'text-text-muted'}">
+                  {amendError || 'Keeps the original prompt, earlier changes and reference photos. ⌘↵ to send.'}
+                </p>
+                <button class="btn-primary text-xs shrink-0" disabled={amending || !amendText.trim()} onclick={amend}>
+                  {amending ? 'Amending…' : 'Amend'}
+                </button>
+              </div>
+            </div>
+          {/if}
+
           <div class="flex gap-2 overflow-x-auto pb-1">
             {#each product.media as m, i (m.id)}
               <button class="shrink-0 w-24 h-24 rounded-md overflow-hidden border-2 transition-all duration-150 {showing.kind === 'media' && showing.index === i ? 'border-[var(--accent)]' : 'border-transparent opacity-75 hover:opacity-100'}" onclick={() => selectMedia(i)}>
@@ -322,10 +403,13 @@
               {/each}
               {#each generated as g (g.id)}
                 <div class="card p-3 space-y-2">
-                  <button class="block w-full rounded-md overflow-hidden bg-elevated" onclick={() => { showing = { kind: 'generated', id: g.id }; view = 'single'; window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
+                  <button class="block w-full rounded-md overflow-hidden bg-elevated" onclick={() => openForAmend(g)}>
                     <img src="/studio/image/{g.id}" alt={g.presetName} class="w-full aspect-[4/5] object-cover" loading="lazy" />
                   </button>
                   <p class="text-xs text-text-secondary truncate">{g.presetName} <span class="text-text-muted">· {g.model === 'best' ? 'Pro' : 'Fast'}</span></p>
+                  {#if g.instruction}
+                    <p class="text-[11px] text-text-muted truncate" title={g.instruction}>↳ {g.instruction}</p>
+                  {/if}
                   <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
                     {#if g.status === 'ADDED'}
                       <span class="text-positive">On product</span>
@@ -337,6 +421,7 @@
                     {:else}
                       <button class="text-text-secondary hover:underline disabled:opacity-50" disabled={!!working[g.id]} onclick={() => act(g, 'library')}>{working[g.id] === 'library' ? 'Saving…' : 'Save to library'}</button>
                     {/if}
+                    <button class="text-text-secondary hover:underline" onclick={() => openForAmend(g)}>Amend</button>
                     {#if g.status !== 'ADDED'}
                       <button class="text-negative/80 hover:text-negative disabled:opacity-50" disabled={!!working[g.id]} onclick={() => act(g, 'discard')}>Discard</button>
                     {/if}
