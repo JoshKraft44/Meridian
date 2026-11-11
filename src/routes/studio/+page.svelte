@@ -9,6 +9,7 @@
     id: string;
     presetName: string;
     model: string;
+    imageSize: string;
     status: string;
     creativeId: string | null;
     parentId: string | null;
@@ -37,7 +38,34 @@
   let showing = $state<{ kind: 'media'; index: number } | { kind: 'generated'; id: string }>({ kind: 'media', index: 0 });
 
   let count = $state<Count>('one');
-  let model = $state<'fast' | 'best'>('fast');
+  const QUALITIES = [
+    { value: 'fast-1K', label: 'Fast · 1K', hint: '~8s, quick drafts' },
+    { value: 'fast-2K', label: 'Fast · 2K', hint: '~14s' },
+    { value: 'best-2K', label: 'Best · 2K', hint: '~19s, Nano Banana Pro' },
+    { value: 'best-4K', label: 'Best · 4K', hint: '~30s, largest files' }
+  ];
+  // Remembered per browser so it doesn't fall back to Fast every visit
+  let quality = $state('best-2K');
+  let model = $derived(quality.split('-')[0] as 'fast' | 'best');
+  let imageSize = $derived(quality.split('-')[1]);
+
+  onMount(() => {
+    try {
+      const saved = localStorage.getItem('studio-quality');
+      if (saved && QUALITIES.some((q) => q.value === saved)) quality = saved;
+    } catch {
+      // storage blocked inside some embedded frames; default is fine
+    }
+  });
+
+  function setQuality(value: string) {
+    quality = value;
+    try {
+      localStorage.setItem('studio-quality', value);
+    } catch {
+      // ignore
+    }
+  }
   let aspectRatio = $state('4:5');
   let useReferences = $state(true);
 
@@ -150,7 +178,7 @@
     try {
       const image = await api<Generated>('/studio/api/generate', {
         method: 'POST',
-        body: JSON.stringify({ productId: product.id, sourceMediaIds, presetName, prompt, count, model, aspectRatio })
+        body: JSON.stringify({ productId: product.id, sourceMediaIds, presetName, prompt, count, model, imageSize, aspectRatio })
       });
       pending = pending.filter((p) => p.tempId !== tempId);
       generated = [image, ...generated];
@@ -238,7 +266,7 @@
     try {
       const image = await api<Generated>(`/studio/api/images/${showingGenerated.id}/amend`, {
         method: 'POST',
-        body: JSON.stringify({ instruction: amendText, model })
+        body: JSON.stringify({ instruction: amendText, model, imageSize })
       });
       generated = [image, ...generated];
       showing = { kind: 'generated', id: image.id };
@@ -406,7 +434,7 @@
                   <button class="block w-full rounded-md overflow-hidden bg-elevated" onclick={() => openForAmend(g)}>
                     <img src="/studio/image/{g.id}" alt={g.presetName} class="w-full aspect-[4/5] object-cover" loading="lazy" />
                   </button>
-                  <p class="text-xs text-text-secondary truncate">{g.presetName} <span class="text-text-muted">· {g.model === 'best' ? 'Pro' : 'Fast'}</span></p>
+                  <p class="text-xs text-text-secondary truncate">{g.presetName} <span class="text-text-muted">· {g.model === 'best' ? 'Best' : 'Fast'} {g.imageSize}</span></p>
                   {#if g.instruction}
                     <p class="text-[11px] text-text-muted truncate" title={g.instruction}>↳ {g.instruction}</p>
                   {/if}
@@ -452,9 +480,10 @@
             {/each}
           </div>
           <div class="flex gap-2 text-xs">
-            <select class="input text-xs flex-1" bind:value={model}>
-              <option value="fast">Fast (Nano Banana 2)</option>
-              <option value="best">Best (Nano Banana Pro)</option>
+            <select class="input text-xs flex-1" value={quality} onchange={(e) => setQuality(e.currentTarget.value)} title="Fast = Nano Banana 2, Best = Nano Banana Pro">
+              {#each QUALITIES as q}
+                <option value={q.value}>{q.label} ({q.hint})</option>
+              {/each}
             </select>
             <select class="input text-xs" bind:value={aspectRatio}>
               <option value="4:5">4:5</option>
