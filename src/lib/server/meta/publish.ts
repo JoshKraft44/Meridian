@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import { env as publicEnv } from '$env/dynamic/public';
 import { db } from '$lib/db';
 import { metaGet, metaPost, MetaApiError, type MetaCredentials } from './api';
 import type { Creative, SocialPost } from '@prisma/client';
@@ -58,7 +59,7 @@ async function waitForContainer(id: string, creds: MetaCredentials, isVideo: boo
 
 // Instagram fetches photos from Meridian's own /media route rather than Shopify's CDN.
 function igImageUrl(c: Creative): string {
-  return `${env.PUBLIC_APP_URL}/media/${c.id}.jpg`;
+  return `${publicEnv.PUBLIC_APP_URL}/media/${c.id}.jpg`;
 }
 
 // The CDN builds resized/cropped variants on first request, which can be slow enough for
