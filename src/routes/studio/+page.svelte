@@ -2,6 +2,7 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
+  import CompareView, { type CompareItem } from './CompareView.svelte';
 
   type Media = { id: string; alt: string | null; url: string; width: number; height: number };
   type Preset = { id: string; name: string; description: string; prompt: string; builtIn: boolean };
@@ -10,6 +11,7 @@
     presetName: string;
     model: string;
     imageSize: string;
+    sourceMediaIds: string[];
     status: string;
     creativeId: string | null;
     parentId: string | null;
@@ -154,6 +156,44 @@
       }
       await new Promise((r) => setTimeout(r, 2000));
     }
+  }
+
+  // Compare: listing photos and generations, side by side with shared zoom
+  let comparing = $state(false);
+  let compareLeft = $state('');
+  let compareRight = $state('');
+
+  let compareItems = $derived<CompareItem[]>(
+    product
+      ? [
+          ...generated.map((g) => ({
+            key: `g:${g.id}`,
+            url: `/studio/image/${g.id}`,
+            thumb: `/studio/image/${g.id}`,
+            label: `${g.presetName}${g.instruction ? ` → ${g.instruction}` : ''}`
+          })),
+          ...product.media.map((m, i) => ({
+            key: `m:${m.id}`,
+            url: sized(m.url, 2400),
+            thumb: sized(m.url, 160),
+            label: `Listing photo ${i + 1}`
+          }))
+        ]
+      : []
+  );
+
+  function openCompare() {
+    if (!product) return;
+    if (showing.kind === 'generated') {
+      const g = generated.find((x) => x.id === (showing as { id: string }).id);
+      compareLeft = `g:${g?.id}`;
+      // A generation is most useful next to the photo it was made from
+      compareRight = g?.sourceMediaIds[0] ? `m:${g.sourceMediaIds[0]}` : `m:${product.media[0]?.id}`;
+    } else {
+      compareLeft = `m:${product.media[showing.index]?.id}`;
+      compareRight = generated[0] ? `g:${generated[0].id}` : `m:${product.media[(showing.index + 1) % product.media.length]?.id}`;
+    }
+    comparing = true;
   }
 
   function selectMedia(index: number) {
@@ -433,6 +473,7 @@
             <button class="text-xs text-text-muted hover:text-text-secondary" onclick={() => openProduct(null)}>← All products</button>
             <h1 class="text-lg font-semibold truncate">{product.title}</h1>
           </div>
+          <button class="btn-outline text-xs shrink-0" disabled={!product.media.length} onclick={openCompare}>Compare</button>
           <div class="flex rounded-md border border-border overflow-hidden text-xs shrink-0">
             <button class="px-3 py-1.5 {view === 'single' ? 'bg-elevated text-text-primary' : 'text-text-muted'}" onclick={() => (view = 'single')}>Large</button>
             <button class="px-3 py-1.5 {view === 'grid' ? 'bg-elevated text-text-primary' : 'text-text-muted'}" onclick={() => (view = 'grid')}>All photos</button>
@@ -682,5 +723,9 @@
         {/if}
       </aside>
     </div>
+  {/if}
+
+  {#if comparing && compareItems.length}
+    <CompareView items={compareItems} bind:leftKey={compareLeft} bind:rightKey={compareRight} onclose={() => (comparing = false)} />
   {/if}
 </div>

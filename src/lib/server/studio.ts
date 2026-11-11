@@ -12,6 +12,7 @@ export const GENERATED_SELECT = {
   presetName: true,
   model: true,
   imageSize: true,
+  sourceMediaIds: true,
   status: true,
   creativeId: true,
   parentId: true,
