@@ -420,3 +420,35 @@ model SocialPostMedia {
 
   @@id([postId, position])
 }
+
+// Scene prompts for the image studio. The name/description is what shows on the button;
+// the prompt is the full text sent to the model ({antlers} is filled in per product).
+model ScenePreset {
+  id          String    @id @default(cuid())
+  name        String
+  description String
+  prompt      String
+  builtIn     Boolean   @default(false)
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+// AI scene images generated from a product's photos. Kept until added to the product,
+// saved to the library, or discarded.
+model GeneratedImage {
+  id             String   @id @default(cuid())
+  productGid     String
+  sourceMediaIds String[]
+  presetName     String
+  prompt         String
+  model          String
+  aspectRatio    String
+  bytes          Bytes
+  mimeType       String
+  status         String   @default("NEW") // NEW, ADDED, DISCARDED
+  shopifyMediaId String?
+  creativeId     String?
+  createdAt      DateTime @default(now())
+
+  @@index([productGid, createdAt])
+}
