@@ -1,0 +1,21 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "0327c2a9121390ba040decd4e4ed3f7a"
+application_url = "https://meridian-production-a877.up.railway.app/studio"
+embedded = true
+name = "Meridian"
+
+[webhooks]
+api_version = "2026-01"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_all_orders,write_orders,write_fulfillments,write_merchant_managed_fulfillment_orders,write_products,write_inventory,write_publications,write_discounts,write_shipping,write_online_store_navigation,write_online_store_pages,write_content,write_themes,write_files,write_metaobjects,write_metaobject_definitions,write_customers,write_markets,write_translations,write_locales,read_locations,read_analytics,read_reports,read_shopify_payments_accounts,read_shopify_payments_payouts"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [
+  "https://meridian-production-a877.up.railway.app/api/shopify/callback",
+  "http://localhost:5173/api/shopify/callback"
+]
