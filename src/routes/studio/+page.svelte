@@ -142,6 +142,20 @@
     else searchProducts();
   });
 
+  // Shopify processes new media for a few seconds, so it can take a couple of tries to appear
+  async function refreshPhotos() {
+    if (!product) return;
+    const before = product.media.length;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const data = await api<{ product: NonNullable<typeof product> }>(`/studio/api/product?id=${encodeURIComponent(product.id)}`).catch(() => null);
+      if (data && product && data.product.media.length > before) {
+        product = { ...product, media: data.product.media };
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+
   function selectMedia(index: number) {
     sourceIndex = index;
     showing = { kind: 'media', index };
@@ -360,8 +374,7 @@
       } else {
         generated = generated.map((g) => (g.id === img.id ? updated : g));
       }
-      // Added images show up in the product's photo list on the next load
-      if (action === 'add' && product) notice = 'Added to the product. Reload to see it in the photo list.';
+      if (action === 'add') await refreshPhotos();
     } catch (err) {
       notice = (err as Error).message;
     } finally {
@@ -441,6 +454,25 @@
           <div class="relative rounded-lg bg-elevated overflow-hidden">
             <img src={mainImage.url} alt="" class="w-full h-[68vh] object-contain" />
             <span class="absolute top-3 left-3 text-xs px-2 py-1 rounded bg-black/60 text-white">{mainImage.label}</span>
+            {#if showingGenerated}
+              {@const g = showingGenerated}
+              <div class="absolute top-3 right-3 flex gap-2">
+                {#if g.creativeId}
+                  <span class="text-xs px-3 py-1.5 rounded-md bg-black/60 text-white">In library ✓</span>
+                {:else}
+                  <button class="text-xs px-3 py-1.5 rounded-md bg-black/60 text-white hover:bg-black/75 disabled:opacity-60" disabled={!!working[g.id]} onclick={() => act(g, 'library')}>
+                    {working[g.id] === 'library' ? 'Saving…' : 'Save to library'}
+                  </button>
+                {/if}
+                {#if g.status === 'ADDED'}
+                  <span class="text-xs px-3 py-1.5 rounded-md bg-positive/90 text-white">On listing ✓</span>
+                {:else}
+                  <button class="text-xs px-3 py-1.5 rounded-md accent-bg text-white hover:opacity-90 disabled:opacity-60" disabled={!!working[g.id]} onclick={() => act(g, 'add')}>
+                    {working[g.id] === 'add' ? 'Adding…' : 'Add to this listing'}
+                  </button>
+                {/if}
+              </div>
+            {/if}
             {#if showing.kind === 'media'}
               <button class="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 text-white text-lg" onclick={() => step(-1)} aria-label="Previous photo">‹</button>
               <button class="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 text-white text-lg" onclick={() => step(1)} aria-label="Next photo">›</button>
@@ -553,9 +585,9 @@
                   {/if}
                   <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
                     {#if g.status === 'ADDED'}
-                      <span class="text-positive">On product</span>
+                      <span class="text-positive">On listing</span>
                     {:else}
-                      <button class="text-text-primary hover:underline disabled:opacity-50" disabled={!!working[g.id]} onclick={() => act(g, 'add')}>{working[g.id] === 'add' ? 'Adding…' : 'Add to product'}</button>
+                      <button class="text-text-primary hover:underline disabled:opacity-50" disabled={!!working[g.id]} onclick={() => act(g, 'add')}>{working[g.id] === 'add' ? 'Adding…' : 'Add to this listing'}</button>
                     {/if}
                     {#if g.creativeId}
                       <span class="text-positive">In library</span>
