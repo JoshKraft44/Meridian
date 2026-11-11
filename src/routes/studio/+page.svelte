@@ -479,17 +479,18 @@
               <button class="py-1.5 rounded-md border {count === value ? 'border-[var(--accent)] text-text-primary' : 'border-border text-text-muted'}" onclick={() => (count = value as Count)}>{label}</button>
             {/each}
           </div>
-          <div class="flex gap-2 text-xs">
-            <select class="input text-xs flex-1" value={quality} onchange={(e) => setQuality(e.currentTarget.value)} title="Fast = Nano Banana 2, Best = Nano Banana Pro">
+          <div class="space-y-1">
+            <label for="studio-quality" class="text-[11px] text-text-muted">Quality</label>
+            <select id="studio-quality" class="input text-xs w-full" value={quality} onchange={(e) => setQuality(e.currentTarget.value)}>
               {#each QUALITIES as q}
                 <option value={q.value}>{q.label} ({q.hint})</option>
               {/each}
             </select>
-            <select class="input text-xs" bind:value={aspectRatio}>
-              <option value="4:5">4:5</option>
-              <option value="1:1">1:1</option>
-              <option value="3:4">3:4</option>
-            </select>
+          </div>
+          <div class="grid grid-cols-3 gap-2 text-xs">
+            {#each ['4:5', '1:1', '3:4'] as ratio}
+              <button class="py-1.5 rounded-md border {aspectRatio === ratio ? 'border-[var(--accent)] text-text-primary' : 'border-border text-text-muted'}" onclick={() => (aspectRatio = ratio)}>{ratio}</button>
+            {/each}
           </div>
         </div>
 
