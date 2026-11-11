@@ -251,7 +251,76 @@
     return steps;
   });
 
+  // Start fresh: a new image from the reference photos with every correction built into the prompt
+  let freshOpen = $state(false);
+  let freshBase = $state('');
+  let freshChanges = $state<string[]>([]);
+  let freshNote = $state('');
+  let freshIncludeLatest = $state(false);
+  let freshEditing = $state(false);
+  let freshPrompt = $state('');
+  let freshBusy = $state(false);
+  let freshError = $state('');
+
+  let composedFresh = $derived.by(() => {
+    const corrections = [...freshChanges, ...(freshNote.trim() ? [freshNote.trim()] : [])];
+    let text = freshBase;
+    if (corrections.length) {
+      text += `\n\nEarlier attempts at this photo needed these corrections. Get them right from the start:\n${corrections.map((c) => `- ${c}`).join('\n')}`;
+    }
+    if (freshIncludeLatest) {
+      text += `\n\nThe last image provided is a previous attempt, included only to show what was being aimed for. Do not edit or copy it. Create a new photo from the reference photos of the antler, applying the corrections above.`;
+    }
+    return text;
+  });
+
+  async function openFresh() {
+    if (!showingGenerated) return;
+    freshError = '';
+    freshEditing = false;
+    freshNote = amendText.trim();
+    try {
+      const summary = await api<{ basePrompt: string; changes: string[] }>(`/studio/api/images/${showingGenerated.id}/fresh`);
+      freshBase = summary.basePrompt;
+      freshChanges = summary.changes;
+      freshOpen = true;
+    } catch (err) {
+      amendError = (err as Error).message;
+    }
+  }
+
+  function editFreshPrompt() {
+    freshPrompt = composedFresh;
+    freshEditing = true;
+  }
+
+  async function generateFresh() {
+    if (!showingGenerated) return;
+    freshBusy = true;
+    freshError = '';
+    try {
+      const image = await api<Generated>(`/studio/api/images/${showingGenerated.id}/fresh`, {
+        method: 'POST',
+        body: JSON.stringify({
+          prompt: freshEditing ? freshPrompt : composedFresh,
+          includeLatest: freshIncludeLatest,
+          model,
+          imageSize
+        })
+      });
+      generated = [image, ...generated];
+      showing = { kind: 'generated', id: image.id };
+      freshOpen = false;
+      amendText = '';
+    } catch (err) {
+      freshError = (err as Error).message;
+    } finally {
+      freshBusy = false;
+    }
+  }
+
   function openForAmend(g: Generated) {
+    freshOpen = false;
     showing = { kind: 'generated', id: g.id };
     view = 'single';
     amendError = '';
@@ -397,10 +466,54 @@
                 <p class="text-[11px] {amendError ? 'text-negative' : 'text-text-muted'}">
                   {amendError || 'Keeps the original prompt, earlier changes and reference photos. ⌘↵ to send.'}
                 </p>
-                <button class="btn-primary text-xs shrink-0" disabled={amending || !amendText.trim()} onclick={amend}>
-                  {amending ? 'Amending…' : 'Amend'}
-                </button>
+                <div class="flex gap-2 shrink-0">
+                  <button class="btn-outline text-xs" disabled={amending || freshBusy} onclick={openFresh} title="New image from the original photos, with every correction built in">
+                    Start fresh with these changes
+                  </button>
+                  <button class="btn-primary text-xs" disabled={amending || !amendText.trim()} onclick={amend}>
+                    {amending ? 'Amending…' : 'Amend'}
+                  </button>
+                </div>
               </div>
+              {#if lineage.length >= 2 && !freshOpen}
+                <p class="text-[11px] text-text-muted">Amendments not landing? Starting fresh rebuilds the photo from your originals with all {lineage.length} changes in the prompt.</p>
+              {/if}
+
+              {#if freshOpen}
+                <div class="border-t border-border pt-3 space-y-3">
+                  <p class="text-xs text-text-secondary">
+                    New image from the original reference photos{freshChanges.length ? `, with ${freshChanges.length} earlier ${freshChanges.length === 1 ? 'correction' : 'corrections'} built in` : ''}.
+                  </p>
+                  {#if freshChanges.length}
+                    <ol class="text-xs text-text-muted list-decimal pl-5 space-y-0.5">
+                      {#each freshChanges as c}<li>{c}</li>{/each}
+                    </ol>
+                  {/if}
+                  {#if freshEditing}
+                    <textarea class="input w-full text-xs font-mono leading-relaxed" rows="12" bind:value={freshPrompt}></textarea>
+                  {:else}
+                    <textarea class="input w-full text-sm resize-y" rows="2" bind:value={freshNote} placeholder="Anything else to get right this time? (optional)"></textarea>
+                  {/if}
+                  <label class="flex items-center gap-2 text-xs text-text-muted">
+                    <input type="checkbox" bind:checked={freshIncludeLatest} />
+                    Show the model this attempt as a loose reference (leave off if the idea was wrong)
+                  </label>
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="flex gap-3 text-xs">
+                      {#if freshEditing}
+                        <button class="text-text-muted hover:text-text-secondary" onclick={() => (freshEditing = false)}>Back to simple</button>
+                      {:else}
+                        <button class="text-text-muted hover:text-text-secondary" onclick={editFreshPrompt}>Edit full prompt</button>
+                      {/if}
+                      <button class="text-text-muted hover:text-text-secondary" onclick={() => (freshOpen = false)}>Cancel</button>
+                    </div>
+                    <button class="btn-primary text-xs" disabled={freshBusy} onclick={generateFresh}>
+                      {freshBusy ? 'Generating…' : 'Generate fresh'}
+                    </button>
+                  </div>
+                  {#if freshError}<p class="text-[11px] text-negative">{freshError}</p>{/if}
+                </div>
+              {/if}
             </div>
           {/if}
 

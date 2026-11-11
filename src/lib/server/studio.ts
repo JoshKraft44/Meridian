@@ -194,23 +194,36 @@ export async function generateScene(opts: {
   });
 }
 
+// Every amendment made on the way to this image, oldest first
+async function changesSoFar(image: { instruction: string | null; parentId: string | null }) {
+  const changes: string[] = [];
+  let cursor = image;
+  while (cursor.instruction) {
+    changes.unshift(cursor.instruction);
+    if (!cursor.parentId) break;
+    const prev = await db.generatedImage.findUnique({ where: { id: cursor.parentId }, select: { instruction: true, parentId: true } });
+    if (!prev) break;
+    cursor = prev;
+  }
+  return changes;
+}
+
+// What "start fresh" builds its prompt from: the scene prompt this image came from and the corrections since
+export async function chainSummary(imageId: string) {
+  const image = await db.generatedImage.findUniqueOrThrow({
+    where: { id: imageId },
+    select: { prompt: true, instruction: true, parentId: true }
+  });
+  return { basePrompt: image.prompt, changes: await changesSoFar(image) };
+}
+
 // Edits an earlier generated image. The model gets that image, the original reference photos,
 // the original scene prompt and every change asked for so far, so nothing drifts from the real antler.
 export async function amendScene(opts: { imageId: string; instruction: string; model: ImageModel; imageSize: ImageSize }) {
   if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not set');
 
   const parent = await db.generatedImage.findUniqueOrThrow({ where: { id: opts.imageId } });
-
-  // Earlier amendments in this chain, oldest first
-  const history: string[] = [];
-  let cursor = parent;
-  while (cursor.instruction) {
-    history.unshift(cursor.instruction);
-    if (!cursor.parentId) break;
-    const prev = await db.generatedImage.findUnique({ where: { id: cursor.parentId } });
-    if (!prev) break;
-    cursor = prev;
-  }
+  const history = await changesSoFar(parent);
 
   const product = await loadProduct(parent.productGid);
   if (!product) throw new Error('Product not found');
@@ -257,6 +270,55 @@ ${parent.prompt}`;
       mimeType: out.mimeType,
       parentId: parent.id,
       instruction: opts.instruction.trim()
+    },
+    select: GENERATED_SELECT
+  });
+}
+
+// When amending has gone as far as it can, start over from the real photos with everything learned
+// built into the prompt. The last attempt can ride along as a loose reference, but it's never edited.
+export async function startFresh(opts: {
+  imageId: string;
+  prompt: string;
+  includeLatest: boolean;
+  model: ImageModel;
+  imageSize: ImageSize;
+}) {
+  if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not set');
+
+  const latest = await db.generatedImage.findUniqueOrThrow({ where: { id: opts.imageId } });
+  const product = await loadProduct(latest.productGid);
+  if (!product) throw new Error('Product not found');
+
+  const references = latest.sourceMediaIds
+    .map((id) => product.media.find((m) => m.id === id))
+    .filter((m) => m !== undefined);
+  if (references.length === 0) throw new Error('The original reference photos are no longer on the product');
+
+  const images = await Promise.all(references.map((m) => fetchReference(m.url)));
+  if (opts.includeLatest) images.push({ bytes: Buffer.from(latest.bytes), mimeType: latest.mimeType });
+
+  const out = await generateImage({
+    apiKey: env.GEMINI_API_KEY,
+    model: opts.model,
+    prompt: opts.prompt,
+    images,
+    aspectRatio: latest.aspectRatio,
+    imageSize: opts.imageSize
+  });
+
+  // A new chain: this prompt becomes the base that later amendments build on
+  return db.generatedImage.create({
+    data: {
+      productGid: latest.productGid,
+      sourceMediaIds: latest.sourceMediaIds,
+      presetName: `${latest.presetName.replace(/ \(fresh\)$/, '')} (fresh)`,
+      prompt: opts.prompt,
+      model: opts.model,
+      imageSize: opts.imageSize,
+      aspectRatio: latest.aspectRatio,
+      bytes: out.bytes,
+      mimeType: out.mimeType
     },
     select: GENERATED_SELECT
   });
