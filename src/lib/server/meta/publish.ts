@@ -57,9 +57,16 @@ async function waitForContainer(id: string, creds: MetaCredentials, isVideo: boo
   throw new Error('Timed out waiting for Instagram to process the media');
 }
 
+// The CDN builds resized/cropped variants on first request, which can be slow enough for
+// Instagram's fetcher to give up. Requesting them first means Instagram gets a cached copy.
+async function warmImages(urls: string[]) {
+  await Promise.all(urls.map((url) => fetch(url).then((r) => r.arrayBuffer()).catch(() => null)));
+}
+
 async function publishInstagram(post: PostWithMedia, igUserId: string) {
   const creds = systemCreds();
   const media = post.media.map((m) => m.creative);
+  await warmImages(media.filter((c) => c.kind === 'IMAGE').map(igSafeUrl));
   let containerId: string;
 
   if (post.format === 'SINGLE') {

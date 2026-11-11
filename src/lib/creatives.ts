@@ -19,17 +19,26 @@ export function needsIgCrop(c: Sized): boolean {
   return ratio < IG_MIN_RATIO || ratio > IG_MAX_RATIO;
 }
 
-// Shopify's CDN can center-crop on the fly, so originals stay untouched.
+// Instagram stores feed photos at 1080px wide, so anything over 1440 is wasted download time
+const IG_MAX_WIDTH = 1440;
+
+// Shopify's CDN can center-crop and resize on the fly, so originals stay untouched.
 // format=pjpg forces JPEG: the CDN serves WebP to clients that accept it, and Instagram rejects WebP.
 export function igSafeUrl(c: Sized): string {
   const params = ['format=pjpg'];
 
-  if (c.width && c.height && needsIgCrop(c)) {
+  if (c.width && c.height) {
     let width = c.width;
     let height = c.height;
-    if (width / height < IG_MIN_RATIO) height = Math.floor(width / IG_MIN_RATIO);
-    else width = Math.floor(height * IG_MAX_RATIO);
-    params.unshift(`width=${width}`, `height=${height}`, 'crop=center');
+    if (needsIgCrop(c)) {
+      if (width / height < IG_MIN_RATIO) height = Math.floor(width / IG_MIN_RATIO);
+      else width = Math.floor(height * IG_MAX_RATIO);
+    }
+    if (width > IG_MAX_WIDTH) {
+      height = Math.round((height * IG_MAX_WIDTH) / width);
+      width = IG_MAX_WIDTH;
+    }
+    if (width !== c.width || height !== c.height) params.unshift(`width=${width}`, `height=${height}`, 'crop=center');
   }
 
   return `${c.url}${c.url.includes('?') ? '&' : '?'}${params.join('&')}`;
