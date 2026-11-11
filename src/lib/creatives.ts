@@ -19,17 +19,20 @@ export function needsIgCrop(c: Sized): boolean {
   return ratio < IG_MIN_RATIO || ratio > IG_MAX_RATIO;
 }
 
-// Shopify's CDN can center-crop on the fly, so originals stay untouched
+// Shopify's CDN can center-crop on the fly, so originals stay untouched.
+// format=pjpg forces JPEG: the CDN serves WebP to clients that accept it, and Instagram rejects WebP.
 export function igSafeUrl(c: Sized): string {
-  if (!c.width || !c.height || !needsIgCrop(c)) return c.url;
+  const params = ['format=pjpg'];
 
-  let width = c.width;
-  let height = c.height;
-  if (width / height < IG_MIN_RATIO) height = Math.floor(width / IG_MIN_RATIO);
-  else width = Math.floor(height * IG_MAX_RATIO);
+  if (c.width && c.height && needsIgCrop(c)) {
+    let width = c.width;
+    let height = c.height;
+    if (width / height < IG_MIN_RATIO) height = Math.floor(width / IG_MIN_RATIO);
+    else width = Math.floor(height * IG_MAX_RATIO);
+    params.unshift(`width=${width}`, `height=${height}`, 'crop=center');
+  }
 
-  const sep = c.url.includes('?') ? '&' : '?';
-  return `${c.url}${sep}width=${width}&height=${height}&crop=center`;
+  return `${c.url}${c.url.includes('?') ? '&' : '?'}${params.join('&')}`;
 }
 
 export type Platform = 'INSTAGRAM' | 'FACEBOOK';
