@@ -1,0 +1,12 @@
+# "Image studio" in the More actions menu of every product page.
+# Opens /studio inside the admin; Shopify appends the shop and the product id.
+[[extensions]]
+name = "Image studio"
+description = "Generate scene photos from this product's images"
+handle = "image-studio"
+uid = "c3693589-189e-494a-b370-f94f4010aa1fcf7a5ec8"
+type = "admin_link"
+
+[[extensions.targeting]]
+target = "admin.product-details.action.link"
+url = "/studio"
