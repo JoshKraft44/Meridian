@@ -6,6 +6,18 @@ import { generateImage, type ImageModel } from './gemini';
 
 export type AntlerCount = 'one' | 'pair' | 'set';
 
+// What the studio page needs to know about a generated image (never the bytes)
+export const GENERATED_SELECT = {
+  id: true,
+  presetName: true,
+  model: true,
+  status: true,
+  creativeId: true,
+  parentId: true,
+  instruction: true,
+  createdAt: true
+} as const;
+
 // The rules every scene shares. In the first test the model reshaped antlers it had to
 // re-pose (stood one upright on a shelf) and added/dropped antlers from pairs, so the
 // pose is locked and the count is spelled out.
@@ -168,7 +180,67 @@ export async function generateScene(opts: {
       bytes: out.bytes,
       mimeType: out.mimeType
     },
-    select: { id: true, presetName: true, model: true, status: true, createdAt: true }
+    select: GENERATED_SELECT
+  });
+}
+
+// Edits an earlier generated image. The model gets that image, the original reference photos,
+// the original scene prompt and every change asked for so far, so nothing drifts from the real antler.
+export async function amendScene(opts: { imageId: string; instruction: string; model: ImageModel }) {
+  if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not set');
+
+  const parent = await db.generatedImage.findUniqueOrThrow({ where: { id: opts.imageId } });
+
+  // Earlier amendments in this chain, oldest first
+  const history: string[] = [];
+  let cursor = parent;
+  while (cursor.instruction) {
+    history.unshift(cursor.instruction);
+    if (!cursor.parentId) break;
+    const prev = await db.generatedImage.findUnique({ where: { id: cursor.parentId } });
+    if (!prev) break;
+    cursor = prev;
+  }
+
+  const product = await loadProduct(parent.productGid);
+  if (!product) throw new Error('Product not found');
+  const references = parent.sourceMediaIds
+    .map((id) => product.media.find((m) => m.id === id))
+    .filter((m) => m !== undefined);
+
+  const earlier = history.length
+    ? `\n\nChanges already made to it, in order:\n${history.map((h, i) => `${i + 1}. ${h}`).join('\n')}`
+    : '';
+
+  const prompt = `The first image is a photo you created from the original instructions below.${earlier}
+
+Now edit that photo with this change: ${opts.instruction.trim()}
+
+Keep everything else about the photo the same: composition, framing, lighting and props, unless the change says otherwise.
+
+${references.length ? `The ${references.length === 1 ? 'next image is the original reference photo' : `next ${references.length} images are the original reference photos`} of the real antler. The antler in the edited photo must still match ${references.length === 1 ? 'it' : 'them'} exactly; the change must never alter the antler's shape, tines, colour or markings unless it explicitly asks to.\n\n` : ''}Original instructions (still apply unless the change says otherwise):
+${parent.prompt}`;
+
+  const images = [
+    { bytes: Buffer.from(parent.bytes), mimeType: parent.mimeType },
+    ...(await Promise.all(references.map((m) => fetchReference(m.url))))
+  ];
+  const out = await generateImage({ apiKey: env.GEMINI_API_KEY, model: opts.model, prompt, images, aspectRatio: parent.aspectRatio });
+
+  return db.generatedImage.create({
+    data: {
+      productGid: parent.productGid,
+      sourceMediaIds: parent.sourceMediaIds,
+      presetName: parent.presetName,
+      prompt: parent.prompt,
+      model: opts.model,
+      aspectRatio: parent.aspectRatio,
+      bytes: out.bytes,
+      mimeType: out.mimeType,
+      parentId: parent.id,
+      instruction: opts.instruction.trim()
+    },
+    select: GENERATED_SELECT
   });
 }
 

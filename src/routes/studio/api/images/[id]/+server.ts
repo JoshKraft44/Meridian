@@ -1,7 +1,7 @@
 import type { RequestHandler } from './$types';
 import { json, error } from '@sveltejs/kit';
 import { db } from '$lib/db';
-import { addToProduct, saveToLibrary } from '$lib/server/studio';
+import { GENERATED_SELECT, addToProduct, saveToLibrary } from '$lib/server/studio';
 
 export const POST: RequestHandler = async ({ params, request, locals }) => {
   if (!locals.user) error(401, 'Unauthorized');
@@ -19,7 +19,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
   const image = await db.generatedImage.findUniqueOrThrow({
     where: { id: params.id },
-    select: { id: true, presetName: true, model: true, status: true, creativeId: true, createdAt: true }
+    select: GENERATED_SELECT
   });
   return json(image);
 };
