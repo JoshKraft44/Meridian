@@ -1,6 +1,5 @@
 import { env } from '$env/dynamic/private';
 import { db } from '$lib/db';
-import { igSafeUrl } from '$lib/creatives';
 import { metaGet, metaPost, MetaApiError, type MetaCredentials } from './api';
 import type { Creative, SocialPost } from '@prisma/client';
 
@@ -57,6 +56,11 @@ async function waitForContainer(id: string, creds: MetaCredentials, isVideo: boo
   throw new Error('Timed out waiting for Instagram to process the media');
 }
 
+// Instagram fetches photos from Meridian's own /media route rather than Shopify's CDN.
+function igImageUrl(c: Creative): string {
+  return `${env.PUBLIC_APP_URL}/media/${c.id}.jpg`;
+}
+
 // The CDN builds resized/cropped variants on first request, which can be slow enough for
 // Instagram's fetcher to give up. Requesting them first means Instagram gets a cached copy.
 async function warmImages(urls: string[]) {
@@ -66,12 +70,12 @@ async function warmImages(urls: string[]) {
 async function publishInstagram(post: PostWithMedia, igUserId: string) {
   const creds = systemCreds();
   const media = post.media.map((m) => m.creative);
-  await warmImages(media.filter((c) => c.kind === 'IMAGE').map(igSafeUrl));
+  await warmImages(media.filter((c) => c.kind === 'IMAGE').map(igImageUrl));
   let containerId: string;
 
   if (post.format === 'SINGLE') {
     ({ id: containerId } = await metaPost<{ id: string }>(`/${igUserId}/media`, creds, {
-      image_url: igSafeUrl(media[0]),
+      image_url: igImageUrl(media[0]),
       caption: post.caption
     }));
     await waitForContainer(containerId, creds, false);
@@ -79,7 +83,7 @@ async function publishInstagram(post: PostWithMedia, igUserId: string) {
     const children: string[] = [];
     for (const c of media) {
       const child = await metaPost<{ id: string }>(`/${igUserId}/media`, creds, {
-        image_url: igSafeUrl(c),
+        image_url: igImageUrl(c),
         is_carousel_item: 'true'
       });
       await waitForContainer(child.id, creds, false);
