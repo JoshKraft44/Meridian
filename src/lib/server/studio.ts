@@ -89,6 +89,11 @@ export function guessCount(title: string): AntlerCount {
   return 'one';
 }
 
+// Amend mode: change an existing listing photo instead of building a new scene around the antler
+export function editPrompt(instruction: string) {
+  return `Edit the first reference photo. Make this change and nothing else:\n${instruction.trim()}\n\nKeep everything the change doesn't mention as it is in the photo: the framing, the background, the lighting and every object in it.\n\nThe antler must stay exactly as photographed unless the change is about the antler itself. Reproduce {antlers} with the same silhouette, the same number, length and curvature of every tine, the same burr, and the same colour, texture, cracks, chips and staining. Do not add, remove, duplicate, mirror or reshape any antler or tine.\n\nPhotorealistic. No text, no logos, no watermarks.`;
+}
+
 export function buildPrompt(prompt: string, count: AntlerCount, extraReferences: number) {
   let text = prompt.replaceAll('{antlers}', COUNT_PHRASES[count]);
   if (extraReferences > 0) {
@@ -161,11 +166,11 @@ export async function generateScene(opts: {
   const product = await loadProduct(opts.productId);
   if (!product) throw new Error('Product not found');
 
-  // Main photo first, then up to two other angles as extra references
+  // Main photo first, then up to five other angles as extra references
   const sources = opts.sourceMediaIds
     .map((id) => product.media.find((m) => m.id === id))
     .filter((m) => m !== undefined)
-    .slice(0, 3);
+    .slice(0, 6);
   if (sources.length === 0) throw new Error('Pick a photo to generate from');
 
   const prompt = buildPrompt(opts.prompt, opts.count, sources.length - 1);

@@ -93,6 +93,8 @@
   }
   let aspectRatio = $state('4:5');
   let useReferences = $state(true);
+  let mode = $state<'scene' | 'edit'>('scene');
+  let editText = $state('');
 
   // Edits made with "Use for this session" live here and are gone when the page closes
   let sessionPrompts = $state<Record<string, string>>({});
@@ -311,10 +313,10 @@
     return sessionPrompts[p.id] ?? p.prompt;
   }
 
-  async function generate(presetName: string, prompt: string) {
+  async function generate(presetName: string, prompt: string, instruction?: string) {
     if (!product || !source) return;
 
-    const others = product.media.filter((m) => m.id !== source!.id).slice(0, 2);
+    const others = product.media.filter((m) => m.id !== source!.id).slice(0, 5);
     const sourceMediaIds = [source.id, ...(useReferences ? others.map((m) => m.id) : [])];
     const tempId = crypto.randomUUID();
     pending = [{ tempId, presetName }, ...pending];
@@ -322,13 +324,18 @@
     try {
       const image = await api<Generated>('/studio/api/generate', {
         method: 'POST',
-        body: JSON.stringify({ productId: product.id, sourceMediaIds, presetName, prompt, count, model, imageSize, aspectRatio })
+        body: JSON.stringify({ productId: product.id, sourceMediaIds, presetName, prompt, instruction, count, model, imageSize, aspectRatio })
       });
       pending = pending.filter((p) => p.tempId !== tempId);
       generated = [image, ...generated];
     } catch (err) {
       pending = pending.map((p) => (p.tempId === tempId ? { ...p, error: (err as Error).message } : p));
     }
+  }
+
+  function generateEdit() {
+    if (!editText.trim()) return;
+    generate('Photo edit', '', editText);
   }
 
   function openEditor(p: Preset) {
@@ -812,10 +819,45 @@
           </div>
         </div>
 
+        <div class="grid grid-cols-2 gap-1 p-1 rounded-lg bg-elevated text-xs">
+          {#each [['scene', 'New scene'], ['edit', 'Amend current']] as [value, label]}
+            <button
+              class="py-1.5 rounded-md transition-all duration-150 {mode === value ? 'bg-surface text-text-primary shadow-card' : 'text-text-muted hover:text-text-secondary'}"
+              onclick={() => (mode = value as 'scene' | 'edit')}
+            >{label}</button>
+          {/each}
+        </div>
+
         {#if notice}
           <p class="text-xs text-text-secondary">{notice}</p>
         {/if}
 
+        {#if mode === 'edit'}
+          <div class="card p-4 space-y-3">
+            <p class="text-xs text-text-muted">Pick the photo to change</p>
+            <div class="flex gap-2 overflow-x-auto pb-1">
+              {#each product.media as m, i (m.id)}
+                <button
+                  class="shrink-0 w-14 h-14 rounded-md overflow-hidden border-2 transition-all duration-150 {i === sourceIndex ? 'border-[var(--accent)]' : 'border-transparent opacity-70 hover:opacity-100'}"
+                  onclick={() => selectMedia(i)}
+                >
+                  <img src={sized(m.url, 160)} alt="" class="w-full h-full object-cover" loading="lazy" />
+                </button>
+              {/each}
+            </div>
+            <textarea
+              class="input w-full text-sm"
+              rows="4"
+              placeholder="e.g. Remove the tape measure and clean up the background"
+              bind:value={editText}
+              onkeydown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); generateEdit(); } }}
+            ></textarea>
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-[11px] text-text-muted">{useReferences ? 'Other photos sent for context' : 'Only this photo is sent'} · ⌘↵</p>
+              <button class="btn-primary text-xs" disabled={!source || !editText.trim()} onclick={generateEdit}>Amend photo</button>
+            </div>
+          </div>
+        {:else}
         <div class="space-y-2">
           {#each presets as p (p.id)}
             <div class="card p-3 flex gap-3 items-start">
@@ -852,6 +894,7 @@
               <button class="btn-outline text-xs mt-3" onclick={saveAsPreset}>Save as new preset</button>
             </div>
           </div>
+        {/if}
         {/if}
       </aside>
     </div>
