@@ -1,6 +1,6 @@
 import type { RequestHandler } from './$types';
 import { json, error } from '@sveltejs/kit';
-import { generateScene, type AntlerCount } from '$lib/server/studio';
+import { editPrompt, generateScene, type AntlerCount } from '$lib/server/studio';
 import { IMAGE_MODELS, sizeFor, type ImageModel } from '$lib/server/gemini';
 
 const COUNTS: AntlerCount[] = ['one', 'pair', 'set'];
@@ -10,7 +10,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   if (!locals.user) error(401, 'Unauthorized');
 
   const body = await request.json();
-  if (!body.productId || !Array.isArray(body.sourceMediaIds) || !body.prompt?.trim()) error(400, 'Missing details');
+  if (!body.productId || !Array.isArray(body.sourceMediaIds)) error(400, 'Missing details');
+
+  // Amend mode sends just the change; the edit rules are added here
+  const editing = typeof body.instruction === 'string';
+  const prompt = editing ? (body.instruction.trim() ? editPrompt(body.instruction) : '') : String(body.prompt ?? '').trim();
+  if (!prompt) error(400, editing ? 'Describe the change you want' : 'Missing prompt');
 
   const model: ImageModel = body.model in IMAGE_MODELS ? body.model : 'fast';
 
@@ -18,8 +23,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     const image = await generateScene({
       productId: body.productId,
       sourceMediaIds: body.sourceMediaIds,
-      presetName: String(body.presetName ?? 'Custom'),
-      prompt: String(body.prompt),
+      presetName: editing ? 'Photo edit' : String(body.presetName ?? 'Custom'),
+      prompt,
       count: COUNTS.includes(body.count) ? body.count : 'one',
       model,
       imageSize: sizeFor(model, body.imageSize),
