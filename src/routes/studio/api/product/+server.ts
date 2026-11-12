@@ -18,6 +18,11 @@ export const GET: RequestHandler = async ({ url, locals }) => {
       where: { productGid: product.id, status: { not: 'DISCARDED' } },
       orderBy: { createdAt: 'desc' },
       select: GENERATED_SELECT
+    }),
+    db.studioProductView.upsert({
+      where: { productGid: product.id },
+      create: { productGid: product.id },
+      update: { viewedAt: new Date() }
     })
   ]);
 
