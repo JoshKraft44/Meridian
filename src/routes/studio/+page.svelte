@@ -24,9 +24,32 @@
   let productId = $derived($page.url.searchParams.get('id'));
 
   // Product picker
+  type ProductCard = {
+    id: string;
+    title: string;
+    status: string;
+    image: string | null;
+    photos: number;
+    updatedAt: string;
+    viewedAt: string | null;
+    editedAt: string | null;
+  };
+  type Sort = 'updated' | 'viewed' | 'edited' | 'created' | 'title';
+  const SORTS: { value: Sort; label: string }[] = [
+    { value: 'updated', label: 'Updated in Shopify' },
+    { value: 'viewed', label: 'Viewed in studio' },
+    { value: 'edited', label: 'Edited in studio' },
+    { value: 'created', label: 'Newest listings' },
+    { value: 'title', label: 'Title A–Z' }
+  ];
+
   let query = $state('');
-  let products = $state<{ id: string; title: string; image: string | null; photos: number }[]>([]);
+  let filters = $state({ sort: 'updated' as Sort, collection: '', type: '', status: 'active' });
+  let catalog = $state<{ collections: { id: string; title: string; count: number }[]; types: string[] }>({ collections: [], types: [] });
+  let products = $state<ProductCard[]>([]);
+  let nextCursor = $state<string | null>(null);
   let loadingProducts = $state(false);
+  let loadingMore = $state(false);
 
   // Open product
   let product = $state<{ id: string; title: string; media: Media[] } | null>(null);
@@ -110,15 +133,74 @@
     return res.json();
   }
 
+  function productsUrl(after?: string) {
+    const params = new URLSearchParams({ q: query, ...filters });
+    if (after) params.set('after', after);
+    return `/studio/api/products?${params}`;
+  }
+
   async function searchProducts() {
     loadingProducts = true;
+    loadError = '';
     try {
-      products = await api(`/studio/api/products?q=${encodeURIComponent(query)}`);
+      localStorage.setItem('studio-filters', JSON.stringify(filters));
+    } catch {}
+    try {
+      const data = await api<{ products: ProductCard[]; next: string | null }>(productsUrl());
+      products = data.products;
+      nextCursor = data.next;
     } catch (err) {
       loadError = (err as Error).message;
     } finally {
       loadingProducts = false;
     }
+  }
+
+  async function loadMoreProducts() {
+    if (!nextCursor) return;
+    loadingMore = true;
+    try {
+      const data = await api<{ products: ProductCard[]; next: string | null }>(productsUrl(nextCursor));
+      products = [...products, ...data.products];
+      nextCursor = data.next;
+    } catch (err) {
+      loadError = (err as Error).message;
+    } finally {
+      loadingMore = false;
+    }
+  }
+
+  async function loadCatalog() {
+    if (catalog.collections.length) return;
+    try {
+      catalog = await api('/studio/api/catalog');
+    } catch {
+      // Filters just stay empty; search and sorting still work
+    }
+  }
+
+  function setFilter(key: keyof typeof filters, value: string) {
+    filters = { ...filters, [key]: value };
+    searchProducts();
+  }
+
+  function ago(iso: string | null) {
+    if (!iso) return null;
+    const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (minutes < 1) return 'just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.round(hours / 24);
+    if (days < 30) return `${days}d ago`;
+    return new Date(iso).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  // The time shown on each card follows the sort, falling back to Shopify's update time
+  function cardTime(p: ProductCard) {
+    if (filters.sort === 'viewed' && p.viewedAt) return `Viewed ${ago(p.viewedAt)}`;
+    if (filters.sort === 'edited' && p.editedAt) return `Edited ${ago(p.editedAt)}`;
+    return `Updated ${ago(p.updatedAt)}`;
   }
 
   async function loadProduct(id: string) {
@@ -139,9 +221,17 @@
     }
   }
 
+  try {
+    const saved = JSON.parse(localStorage.getItem('studio-filters') ?? 'null');
+    if (saved) filters = { ...filters, ...saved };
+  } catch {}
+
   $effect(() => {
     if (productId) loadProduct(productId);
-    else searchProducts();
+    else {
+      searchProducts();
+      loadCatalog();
+    }
   });
 
   // Shopify processes new media for a few seconds, so it can take a couple of tries to appear
@@ -438,6 +528,35 @@
           <button class="btn-outline text-xs">Search</button>
         </form>
       </div>
+
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <label class="flex items-center gap-2">
+          <span class="text-text-muted">Sort</span>
+          <select class="input text-xs py-1.5" value={filters.sort} onchange={(e) => setFilter('sort', e.currentTarget.value)}>
+            {#each SORTS as s (s.value)}<option value={s.value}>{s.label}</option>{/each}
+          </select>
+        </label>
+        <select class="input text-xs py-1.5 max-w-56" value={filters.collection} onchange={(e) => setFilter('collection', e.currentTarget.value)}>
+          <option value="">All collections</option>
+          {#each catalog.collections as c (c.id)}<option value={c.id}>{c.title} ({c.count})</option>{/each}
+        </select>
+        <select class="input text-xs py-1.5" value={filters.type} onchange={(e) => setFilter('type', e.currentTarget.value)}>
+          <option value="">All types</option>
+          {#each catalog.types as t (t)}<option value={t}>{t}</option>{/each}
+        </select>
+        <select class="input text-xs py-1.5" value={filters.status} onchange={(e) => setFilter('status', e.currentTarget.value)}>
+          <option value="active">Active</option>
+          <option value="draft">Draft</option>
+          <option value="archived">Archived</option>
+          <option value="all">Any status</option>
+        </select>
+        {#if filters.collection || filters.type || filters.status !== 'active' || query}
+          <button
+            class="text-text-muted hover:text-text-secondary transition-colors duration-150"
+            onclick={() => { query = ''; filters = { ...filters, collection: '', type: '', status: 'active' }; searchProducts(); }}
+          >Clear filters</button>
+        {/if}
+      </div>
       {#if loadError}<p class="text-sm text-negative">{loadError}</p>{/if}
       {#if loadingProducts}
         <p class="text-sm text-text-muted">Loading…</p>
@@ -450,11 +569,24 @@
               </div>
               <div class="p-3">
                 <p class="text-sm text-text-secondary line-clamp-2">{p.title}</p>
-                <p class="text-xs text-text-muted mt-1">{p.photos} photos</p>
+                <p class="text-xs text-text-muted mt-1">
+                  {p.photos} photos · {cardTime(p)}{#if p.status !== 'ACTIVE'} · <span class="capitalize">{p.status.toLowerCase()}</span>{/if}
+                </p>
               </div>
             </button>
+          {:else}
+            <p class="col-span-full text-sm text-text-muted py-8">
+              {#if filters.sort === 'viewed'}No products opened in the studio yet{#if filters.collection || filters.type || query} that match these filters{/if}.
+              {:else if filters.sort === 'edited'}No products with generated images yet{#if filters.collection || filters.type || query} that match these filters{/if}.
+              {:else}No products match.{/if}
+            </p>
           {/each}
         </div>
+        {#if nextCursor}
+          <div class="flex justify-center">
+            <button class="btn-outline text-xs" disabled={loadingMore} onclick={loadMoreProducts}>{loadingMore ? 'Loading…' : 'Load more'}</button>
+          </div>
+        {/if}
       {/if}
     </div>
   {:else if loadError}
