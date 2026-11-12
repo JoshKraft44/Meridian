@@ -450,6 +450,8 @@ model GeneratedImage {
   shopifyMediaId String?
   creativeId     String?
   createdAt      DateTime @default(now())
+  // Bumped by anything done to the image (discard, add, library), so the picker can sort by last edit
+  updatedAt      DateTime @default(now()) @updatedAt
 
   // Amendments: an edit of an earlier generated image, with the change that was asked for.
   // prompt stays the original scene prompt so the whole chain can be replayed.
@@ -457,4 +459,12 @@ model GeneratedImage {
   instruction String?
 
   @@index([productGid, createdAt])
+}
+
+// Last time a product was opened in the studio
+model StudioProductView {
+  productGid String   @id
+  viewedAt   DateTime @default(now())
+
+  @@index([viewedAt])
 }
