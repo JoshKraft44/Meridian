@@ -2,7 +2,8 @@ import type { RequestHandler } from './$types';
 import { redirect, error } from '@sveltejs/kit';
 import { randomBytes, createHash } from 'crypto';
 import { env } from '$env/dynamic/private';
-const SCOPES = ['transactions_r', 'listings_r', 'profile_r', 'shops_r'].join(' ');
+// listings_w is for editing listing descriptions, everything else is read only
+const SCOPES = ['transactions_r', 'listings_r', 'listings_w', 'profile_r', 'shops_r'].join(' ');
 
 export const GET: RequestHandler = async ({ cookies, locals }) => {
 	if (!locals.user) error(401, 'Unauthorized');
