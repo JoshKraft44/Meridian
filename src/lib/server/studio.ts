@@ -366,7 +366,7 @@ export async function addToProduct(imageId: string, alt: string) {
   const res = await appAdmin()(
     `mutation AddProductImage($product: ProductUpdateInput!, $media: [CreateMediaInput!]) {
       productUpdate(product: $product, media: $media) {
-        product { id media(last: 1) { nodes { id status } } }
+        product { id media(first: 1, reverse: true) { nodes { id status } } }
         userErrors { field message }
       }
     }`,
