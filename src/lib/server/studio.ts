@@ -20,10 +20,16 @@ export const GENERATED_SELECT = {
   createdAt: true
 } as const;
 
+// Generations kept coming out cleaner than the real antler: small cracks, chew marks and
+// dirt quietly vanished. Buyers get the antler in the listing photos, so flaws have to carry over.
+const WEAR = `This is a natural shed antler and must look exactly as worn as it does in the photo. Carry over every flaw where it sits on the real antler: hairline cracks, chips, chew marks, dirt, staining, sun bleaching and rough or porous patches. Do not clean, smooth, polish, whiten or repair it, and do not add or exaggerate any damage either. It should look neither nicer nor rougher than the reference.`;
+
 // The rules every scene shares. In the first test the model reshaped antlers it had to
 // re-pose (stood one upright on a shelf) and added/dropped antlers from pairs, so the
 // pose is locked and the count is spelled out.
 const FIDELITY = `Use the reference photo as the only source for the antler. Reproduce {antlers} exactly as photographed: the same silhouette, the same number, length and curvature of every tine, the same burr at the base, and the same colour, texture, cracks, chips and staining.
+
+${WEAR}
 
 Keep the antler in the same pose as in the photo, resting on the new surface the same way: if it stands upright in the photo it stands upright here, if it lies flat it lies flat. Do not lay it down, stand it up, flip it or show its other side. Do not add, remove, duplicate, mirror or reshape any antler or tine. Keep a realistic real-world scale.`;
 
@@ -106,7 +112,7 @@ export function guessCount(title: string): AntlerCount {
 
 // Amend mode: change an existing listing photo instead of building a new scene around the antler
 export function editPrompt(instruction: string) {
-  return `Edit the first reference photo. Make this change and nothing else:\n${instruction.trim()}\n\nKeep everything the change doesn't mention as it is in the photo: the framing, the background, the lighting and every object in it.\n\nThe antler must stay exactly as photographed unless the change is about the antler itself. Reproduce {antlers} with the same silhouette, the same number, length and curvature of every tine, the same burr, and the same colour, texture, cracks, chips and staining. Do not add, remove, duplicate, mirror or reshape any antler or tine.\n\nPhotorealistic. No text, no logos, no watermarks.`;
+  return `Edit the first reference photo. Make this change and nothing else:\n${instruction.trim()}\n\nKeep everything the change doesn't mention as it is in the photo: the framing, the background, the lighting and every object in it.\n\nThe antler must stay exactly as photographed unless the change is about the antler itself. Reproduce {antlers} with the same silhouette, the same number, length and curvature of every tine, the same burr, and the same colour, texture, cracks, chips and staining. Do not add, remove, duplicate, mirror or reshape any antler or tine.\n\n${WEAR}\n\nPhotorealistic. No text, no logos, no watermarks.`;
 }
 
 export function buildPrompt(prompt: string, count: AntlerCount, extraReferences: number) {
