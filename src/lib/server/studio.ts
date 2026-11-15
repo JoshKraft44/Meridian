@@ -15,15 +15,22 @@ export const GENERATED_SELECT = {
   sourceMediaIds: true,
   status: true,
   creativeId: true,
+  shopifyMediaId: true,
   parentId: true,
   instruction: true,
   createdAt: true
 } as const;
 
+// Generations kept coming out cleaner than the real antler: small cracks, chew marks and
+// dirt quietly vanished. Buyers get the antler in the listing photos, so flaws have to carry over.
+const WEAR = `This is a natural shed antler and must look exactly as worn as it does in the photo. Carry over every flaw where it sits on the real antler: hairline cracks, chips, chew marks, dirt, staining, sun bleaching and rough or porous patches. Do not clean, smooth, polish, whiten or repair it, and do not add or exaggerate any damage either. It should look neither nicer nor rougher than the reference.`;
+
 // The rules every scene shares. In the first test the model reshaped antlers it had to
 // re-pose (stood one upright on a shelf) and added/dropped antlers from pairs, so the
 // pose is locked and the count is spelled out.
 const FIDELITY = `Use the reference photo as the only source for the antler. Reproduce {antlers} exactly as photographed: the same silhouette, the same number, length and curvature of every tine, the same burr at the base, and the same colour, texture, cracks, chips and staining.
+
+${WEAR}
 
 Keep the antler in the same pose as in the photo, resting on the new surface the same way: if it stands upright in the photo it stands upright here, if it lies flat it lies flat. Do not lay it down, stand it up, flip it or show its other side. Do not add, remove, duplicate, mirror or reshape any antler or tine. Keep a realistic real-world scale.`;
 
@@ -106,7 +113,7 @@ export function guessCount(title: string): AntlerCount {
 
 // Amend mode: change an existing listing photo instead of building a new scene around the antler
 export function editPrompt(instruction: string) {
-  return `Edit the first reference photo. Make this change and nothing else:\n${instruction.trim()}\n\nKeep everything the change doesn't mention as it is in the photo: the framing, the background, the lighting and every object in it.\n\nThe antler must stay exactly as photographed unless the change is about the antler itself. Reproduce {antlers} with the same silhouette, the same number, length and curvature of every tine, the same burr, and the same colour, texture, cracks, chips and staining. Do not add, remove, duplicate, mirror or reshape any antler or tine.\n\nPhotorealistic. No text, no logos, no watermarks.`;
+  return `Edit the first reference photo. Make this change and nothing else:\n${instruction.trim()}\n\nKeep everything the change doesn't mention as it is in the photo: the framing, the background, the lighting and every object in it.\n\nThe antler must stay exactly as photographed unless the change is about the antler itself. Reproduce {antlers} with the same silhouette, the same number, length and curvature of every tine, the same burr, and the same colour, texture, cracks, chips and staining. Do not add, remove, duplicate, mirror or reshape any antler or tine.\n\n${WEAR}\n\nPhotorealistic. No text, no logos, no watermarks.`;
 }
 
 export function buildPrompt(prompt: string, count: AntlerCount, extraReferences: number) {
@@ -377,6 +384,63 @@ export async function addToProduct(imageId: string, alt: string) {
 
   const mediaId = res.data.productUpdate.product.media.nodes[0]?.id ?? null;
   await db.generatedImage.update({ where: { id: imageId }, data: { status: 'ADDED', shopifyMediaId: mediaId } });
+}
+
+// Takes a photo off the listing. The file itself stays in Shopify's Files, so it can be put back.
+export async function removeFromProduct(productId: string, mediaId: string) {
+  const res = await appAdmin()(
+    `mutation RemoveProductImage($files: [FileUpdateInput!]!) {
+      fileUpdate(files: $files) {
+        files { id }
+        userErrors { field message }
+      }
+    }`,
+    { files: [{ id: mediaId, referencesToRemove: [toProductGid(productId)] }] }
+  );
+  const err = res.errors?.[0]?.message ?? res.data?.fileUpdate?.userErrors?.[0]?.message;
+  if (err) throw new Error(err);
+
+  // a generated image that was on the listing can be added again
+  await db.generatedImage.updateMany({ where: { shopifyMediaId: mediaId }, data: { status: 'NEW', shopifyMediaId: null } });
+}
+
+// imageIds is every listing photo in its new order. Videos and 3D models keep their slots.
+export async function reorderProductMedia(productId: string, imageIds: string[]) {
+  const admin = appAdmin();
+  const id = toProductGid(productId);
+
+  const current = await admin(
+    `query ProductMediaOrder($id: ID!) {
+      product(id: $id) { media(first: 250) { nodes { id mediaContentType } } }
+    }`,
+    { id }
+  );
+  if (current.errors?.length) throw new Error(current.errors[0].message);
+  const nodes: { id: string; mediaContentType: string }[] = current.data?.product?.media.nodes ?? [];
+
+  const images = nodes.filter((n) => n.mediaContentType === 'IMAGE').map((n) => n.id);
+  if (images.length !== imageIds.length || images.some((i) => !imageIds.includes(i))) {
+    throw new Error('The photos on this listing changed, reload and try again');
+  }
+
+  const queue = [...imageIds];
+  const wanted = nodes.map((n) => (n.mediaContentType === 'IMAGE' ? queue.shift()! : n.id));
+  const moves = wanted
+    .map((mediaId, position) => ({ id: mediaId, newPosition: String(position) }))
+    .filter((move, position) => nodes[position].id !== move.id);
+  if (moves.length === 0) return;
+
+  const res = await admin(
+    `mutation ReorderProductMedia($id: ID!, $moves: [MoveInput!]!) {
+      productReorderMedia(id: $id, moves: $moves) {
+        job { id }
+        mediaUserErrors { field message }
+      }
+    }`,
+    { id, moves }
+  );
+  const err = res.errors?.[0]?.message ?? res.data?.productReorderMedia?.mediaUserErrors?.[0]?.message;
+  if (err) throw new Error(err);
 }
 
 export async function saveToLibrary(imageId: string) {

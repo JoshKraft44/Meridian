@@ -14,6 +14,7 @@
     sourceMediaIds: string[];
     status: string;
     creativeId: string | null;
+    shopifyMediaId: string | null;
     parentId: string | null;
     instruction: string | null;
     createdAt: string;
@@ -292,6 +293,64 @@
     sourceIndex = index;
     showing = { kind: 'media', index };
     view = 'single';
+  }
+
+  // Listing photo changes, made from the All photos grid
+  let dragId = $state<string | null>(null);
+  let dropId = $state<string | null>(null);
+  let confirmRemove = $state<string | null>(null);
+  let removing = $state<string | null>(null);
+  let photoError = $state('');
+
+  // Keeps the same photo selected after the list changes under it
+  function setMedia(media: Media[]) {
+    if (!product) return;
+    const selectedId = source?.id;
+    product = { ...product, media };
+    const index = media.findIndex((m) => m.id === selectedId);
+    sourceIndex = index >= 0 ? index : Math.min(sourceIndex, Math.max(0, media.length - 1));
+    if (showing.kind === 'media') showing = { kind: 'media', index: sourceIndex };
+  }
+
+  async function movePhoto(fromId: string, toId: string) {
+    if (!product || fromId === toId) return;
+    const before = product.media;
+    const moved = before.find((m) => m.id === fromId);
+    const toIndex = before.findIndex((m) => m.id === toId);
+    if (!moved || toIndex < 0) return;
+
+    const next = before.filter((m) => m.id !== fromId);
+    next.splice(toIndex, 0, moved);
+    setMedia(next);
+    photoError = '';
+    try {
+      await api('/studio/api/product/media', {
+        method: 'POST',
+        body: JSON.stringify({ productId: product.id, action: 'reorder', order: next.map((m) => m.id) })
+      });
+    } catch (err) {
+      setMedia(before);
+      photoError = (err as Error).message;
+    }
+  }
+
+  async function removePhoto(m: Media) {
+    if (!product) return;
+    removing = m.id;
+    photoError = '';
+    try {
+      await api('/studio/api/product/media', {
+        method: 'POST',
+        body: JSON.stringify({ productId: product.id, action: 'remove', mediaId: m.id })
+      });
+      setMedia(product.media.filter((p) => p.id !== m.id));
+      generated = generated.map((g) => (g.shopifyMediaId === m.id ? { ...g, status: 'NEW' } : g));
+    } catch (err) {
+      photoError = (err as Error).message;
+    } finally {
+      removing = null;
+      confirmRemove = null;
+    }
   }
 
   function step(delta: number) {
@@ -622,12 +681,54 @@
         {#if product.media.length === 0}
           <p class="text-sm text-text-muted">This product has no photos yet.</p>
         {:else if view === 'grid'}
+          <p class="text-xs {photoError ? 'text-negative' : 'text-text-muted'}">
+            {photoError || 'Drag a photo onto another to reorder. The first photo is the one shoppers see first.'}
+          </p>
           <div class="grid grid-cols-2 lg:grid-cols-3 gap-3">
             {#each product.media as m, i (m.id)}
-              <button class="relative rounded-lg overflow-hidden bg-elevated border-2 {i === sourceIndex ? 'border-[var(--accent)]' : 'border-transparent'}" onclick={() => selectMedia(i)}>
-                <img src={sized(m.url, 900)} alt={m.alt ?? ''} class="w-full aspect-square object-contain" loading="lazy" />
-                <span class="absolute top-2 left-2 text-[11px] px-1.5 py-0.5 rounded bg-black/60 text-white">{i + 1}</span>
-              </button>
+              <div
+                class="relative rounded-lg overflow-hidden bg-elevated border-2 transition-all duration-150 {dropId === m.id && dragId !== m.id ? 'border-[var(--accent)] scale-[0.98]' : i === sourceIndex ? 'border-[var(--accent)]' : 'border-transparent'} {dragId === m.id ? 'opacity-40' : ''}"
+                role="listitem"
+                draggable="true"
+                ondragstart={(e) => {
+                  dragId = m.id;
+                  e.dataTransfer?.setData('text/plain', m.id);
+                }}
+                ondragover={(e) => {
+                  if (!dragId) return;
+                  e.preventDefault();
+                  dropId = m.id;
+                }}
+                ondrop={(e) => {
+                  e.preventDefault();
+                  if (dragId) movePhoto(dragId, m.id);
+                  dragId = dropId = null;
+                }}
+                ondragend={() => (dragId = dropId = null)}
+              >
+                <button class="block w-full" onclick={() => selectMedia(i)}>
+                  <img src={sized(m.url, 900)} alt={m.alt ?? ''} draggable="false" class="w-full aspect-square object-contain" loading="lazy" />
+                </button>
+                <span class="absolute top-2 left-2 text-[11px] px-1.5 py-0.5 rounded bg-black/60 text-white pointer-events-none">{i + 1}</span>
+                {#if confirmRemove === m.id}
+                  <div class="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 px-3 py-2 bg-black/75 text-xs text-white">
+                    <span>{removing === m.id ? 'Removing…' : 'Remove from listing?'}</span>
+                    <span class="flex gap-3">
+                      <button class="text-negative font-medium disabled:opacity-60" disabled={removing === m.id} onclick={() => removePhoto(m)}>Remove</button>
+                      <button class="text-white/70 hover:text-white" disabled={removing === m.id} onclick={() => (confirmRemove = null)}>Keep</button>
+                    </span>
+                  </div>
+                {:else}
+                  <button
+                    class="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/60 text-white text-xs hover:bg-black/80 transition-colors duration-150"
+                    aria-label="Remove photo {i + 1} from the listing"
+                    title="Remove from listing"
+                    onclick={() => (confirmRemove = m.id)}
+                  >
+                    ✕
+                  </button>
+                {/if}
+              </div>
             {/each}
           </div>
         {:else if mainImage}
