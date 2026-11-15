@@ -45,7 +45,7 @@
   ];
 
   let query = $state('');
-  let filters = $state({ sort: 'updated' as Sort, collection: '', type: '', status: 'active' });
+  let filters = $state({ sort: 'updated' as Sort, reverse: '', collection: '', type: '', status: 'active' });
   let catalog = $state<{ collections: { id: string; title: string; count: number }[]; types: string[] }>({ collections: [], types: [] });
   let products = $state<ProductCard[]>([]);
   let nextCursor = $state<string | null>(null);
@@ -602,6 +602,13 @@
             {#each SORTS as s (s.value)}<option value={s.value}>{s.label}</option>{/each}
           </select>
         </label>
+        <button
+          class="btn-outline text-xs {filters.reverse ? 'border-[var(--accent)] text-text-primary' : ''}"
+          title="Reverse the sort order"
+          onclick={() => setFilter('reverse', filters.reverse ? '' : '1')}
+        >
+          {#if filters.sort === 'title'}{filters.reverse ? 'Z–A ↑' : 'A–Z ↓'}{:else}{filters.reverse ? 'Oldest first ↑' : 'Newest first ↓'}{/if}
+        </button>
         <select class="input text-xs py-1.5 max-w-56" value={filters.collection} onchange={(e) => setFilter('collection', e.currentTarget.value)}>
           <option value="">All collections</option>
           {#each catalog.collections as c (c.id)}<option value={c.id}>{c.title} ({c.count})</option>{/each}
