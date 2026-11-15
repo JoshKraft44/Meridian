@@ -25,7 +25,7 @@ export const GENERATED_SELECT = {
 // pose is locked and the count is spelled out.
 const FIDELITY = `Use the reference photo as the only source for the antler. Reproduce {antlers} exactly as photographed: the same silhouette, the same number, length and curvature of every tine, the same burr at the base, and the same colour, texture, cracks, chips and staining.
 
-Keep the antler in the same orientation and resting pose as in the photo, lying on the new surface the same way. Do not stand it up, rotate it, flip it or show it from a different side. Do not add, remove, duplicate, mirror or reshape any antler or tine. Keep a realistic real-world scale.`;
+Keep the antler in the same pose as in the photo, resting on the new surface the same way: if it stands upright in the photo it stands upright here, if it lies flat it lies flat. Do not lay it down, stand it up, flip it or show its other side. Do not add, remove, duplicate, mirror or reshape any antler or tine. Keep a realistic real-world scale.`;
 
 const FINISH = `Photorealistic lifestyle product photo. Natural light that matches the scene, physically correct contact shadows where the antler touches the surface, gentle depth of field. No people, no hands, no text, no logos, no watermarks. The antler is the clear subject of the frame.`;
 
@@ -33,11 +33,24 @@ function scene(text: string) {
   return `Create a new photograph of the antler from the reference photo ${text}\n\n${FIDELITY}\n\n${FINISH}`;
 }
 
+// Room scenes say what a lived-in home looks like and what to leave out, or they come back
+// as showroom sets with a linen runner under the antler. No scene says "lying": a
+// self-standing antler got laid flat and came out a different shape.
 const BUILT_IN = [
   {
-    name: 'Farmhouse kitchen table',
-    description: 'Warm wood table, morning window light, linen and a mug behind',
-    prompt: scene('resting on a rustic wooden farmhouse kitchen table. Soft morning light from a window to one side, a folded linen napkin and a ceramic mug softly out of focus in the background.')
+    name: 'Kitchen table',
+    description: 'Bare wood table in a lived-in farmhouse kitchen, plain daylight',
+    prompt: scene('resting directly on the bare wood of a worn farmhouse kitchen table, in the same pose as in the reference photo. Nothing under or beside the antler: no cloth, runner, napkin or towel. Behind it, an ordinary lived-in kitchen in plain window daylight, slightly soft but clearly recognisable: wooden chairs, cream painted cabinets, a sink under a window, a kettle on the stove, a bowl of apples further down the table. A real family kitchen, not a showroom or designer interior.')
+  },
+  {
+    name: 'Living room coffee table',
+    description: 'Bare wood coffee table in an ordinary, lived-in living room',
+    prompt: scene('resting directly on the bare top of a wooden coffee table, in the same pose as in the reference photo. Nothing under or beside the antler: no cloth, runner or tray. Behind it, an ordinary lived-in living room in plain window daylight, slightly soft but clearly recognisable: a fabric sofa with a throw left over one arm, a lamp, a bookshelf, and a TV remote and a mug further along the table. A real home, not a showroom or designer interior, and no kitchen in view.')
+  },
+  {
+    name: 'Floating shelf',
+    description: 'Single wood shelf on a plain white wall, a few everyday things beside it',
+    prompt: scene('resting on a single floating wooden shelf mounted on a plain white painted wall, in the same pose as in the reference photo, photographed from a few steps back with empty white wall around the shelf. Nothing else on the wall and no furniture below. To either side of the antler, not touching it, a few everyday things: some paperbacks leaning together, a small potted plant, a candle in a jar. Soft daylight from one side. A shelf in a real home, not a styled catalogue shot.')
   },
   {
     name: 'Cabin coffee table',
@@ -47,7 +60,7 @@ const BUILT_IN = [
   {
     name: 'Christmas tablescape',
     description: 'Evergreen garland, pinecones and warm string lights',
-    prompt: scene('as the centrepiece of a holiday table: lying on a dark wood table among fresh evergreen garland and pinecones, with warm string lights softly blurred behind. Festive but understated.')
+    prompt: scene('as the centrepiece of a holiday table: resting on a dark wood table among fresh evergreen garland and pinecones, with warm string lights softly blurred behind. Festive but understated.')
   },
   {
     name: 'Snowy window & books',
@@ -56,8 +69,8 @@ const BUILT_IN = [
   },
   {
     name: 'Stone mantel',
-    description: 'Lying on a stone fireplace mantel, candle and warm evening light',
-    prompt: scene('lying flat on a natural stone fireplace mantel in a cozy living room. A lit candle softly out of focus nearby, warm evening light.')
+    description: 'On a stone fireplace mantel, candle and warm evening light',
+    prompt: scene('resting on a natural stone fireplace mantel in a cozy living room. A lit candle softly out of focus nearby, warm evening light.')
   },
   {
     name: 'Clean studio',
@@ -67,8 +80,10 @@ const BUILT_IN = [
 ];
 
 export async function listPresets() {
-  const count = await db.scenePreset.count({ where: { builtIn: true } });
-  if (count === 0) await db.scenePreset.createMany({ data: BUILT_IN.map((p) => ({ ...p, builtIn: true })) });
+  // seeds any built-in that isn't stored yet, so scenes added later show up too
+  const stored = await db.scenePreset.findMany({ where: { builtIn: true }, select: { name: true } });
+  const missing = BUILT_IN.filter((p) => !stored.some((s) => s.name === p.name));
+  if (missing.length) await db.scenePreset.createMany({ data: missing.map((p) => ({ ...p, builtIn: true })) });
 
   return db.scenePreset.findMany({
     where: { archivedAt: null },
