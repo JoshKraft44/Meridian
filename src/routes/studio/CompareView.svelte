@@ -13,8 +13,12 @@
   const MIN_ZOOM = 1;
   const MAX_ZOOM = 8;
 
-  // One zoom level for both sides; each side keeps its own scroll position
-  let zoom = $state(1);
+  // Each side has its own zoom and scroll position. The locks decide whether a zoom or pan
+  // on one side carries over to the other.
+  let zooms = $state([1, 1]);
+  let lockZoom = $state(true);
+  let lockPan = $state(false);
+  let active = $state(0);
   let panes = $state<(HTMLDivElement | null)[]>([null, null]);
 
   let left = $derived(items.find((i) => i.key === leftKey) ?? items[0]);
@@ -33,47 +37,88 @@
     };
   }
 
-  async function setZoom(next: number, focus?: { pane: number; clientX: number; clientY: number }) {
-    const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next));
-    if (clamped === zoom) return;
+  // Where each pane was last seen, to turn scroll events into a pan distance
+  const lastScroll = [{ x: 0, y: 0 }, { x: 0, y: 0 }];
+  function remember(side: number) {
+    const pane = panes[side];
+    if (pane) lastScroll[side] = { x: pane.scrollLeft, y: pane.scrollTop };
+  }
 
-    const anchors = panes.map((pane, i) =>
-      pane ? anchorFor(pane, focus?.pane === i ? focus.clientX : undefined, focus?.pane === i ? focus.clientY : undefined) : null
-    );
-    zoom = clamped;
+  function onScroll(side: number) {
+    const pane = panes[side];
+    if (!pane) return;
+    const dx = pane.scrollLeft - lastScroll[side].x;
+    const dy = pane.scrollTop - lastScroll[side].y;
+    remember(side);
+    if (!lockPan || (dx === 0 && dy === 0)) return;
+
+    const other = panes[1 - side];
+    if (!other) return;
+    other.scrollLeft += dx;
+    other.scrollTop += dy;
+    // remembered straight away so the other side's own scroll event doesn't bounce back
+    remember(1 - side);
+  }
+
+  // Zooms by a factor rather than to a level, so locked sides keep whatever difference they had
+  async function zoomBy(factor: number, focus?: { pane: number; clientX: number; clientY: number }) {
+    const sides = lockZoom ? [0, 1] : [focus?.pane ?? active];
+    const current = sides.map((s) => zooms[s]);
+    const limited = Math.max(MIN_ZOOM / Math.min(...current), Math.min(MAX_ZOOM / Math.max(...current), factor));
+    if (limited === 1) return;
+
+    const anchors = sides.map((s) => {
+      const pane = panes[s];
+      const focused = focus?.pane === s;
+      return pane ? anchorFor(pane, focused ? focus.clientX : undefined, focused ? focus.clientY : undefined) : null;
+    });
+    for (const s of sides) zooms[s] *= limited;
     await tick();
 
-    panes.forEach((pane, i) => {
+    sides.forEach((s, i) => {
+      const pane = panes[s];
       const a = anchors[i];
       if (!pane || !a) return;
       pane.scrollLeft = a.fx * pane.scrollWidth - a.x;
       pane.scrollTop = a.fy * pane.scrollHeight - a.y;
     });
+    // a zoom moves the scroll position too, which shouldn't count as a pan
+    remember(0);
+    remember(1);
+  }
+
+  async function fit() {
+    zooms = [1, 1];
+    await tick();
+    remember(0);
+    remember(1);
   }
 
   function onWheel(e: WheelEvent, pane: number) {
-    // Plain scroll pans this side only; pinch (Chrome) and ⌘/ctrl + scroll zoom both
+    // Plain scroll pans; pinch (Chrome) and ⌘/ctrl + scroll zoom
     if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
-    setZoom(zoom * Math.exp(-e.deltaY * 0.01), { pane, clientX: e.clientX, clientY: e.clientY });
+    zoomBy(Math.exp(-e.deltaY * 0.01), { pane, clientX: e.clientX, clientY: e.clientY });
   }
 
   // Safari reports trackpad pinch as gesture events instead of ctrl + wheel
-  let gestureStartZoom = 1;
+  let lastScale = 1;
   function onGestureStart(e: Event) {
     e.preventDefault();
-    gestureStartZoom = zoom;
+    lastScale = 1;
   }
   function onGestureChange(e: Event, pane: number) {
     e.preventDefault();
     const g = e as Event & { scale: number; clientX: number; clientY: number };
-    setZoom(gestureStartZoom * g.scale, { pane, clientX: g.clientX, clientY: g.clientY });
+    zoomBy(g.scale / lastScale, { pane, clientX: g.clientX, clientY: g.clientY });
+    lastScale = g.scale;
   }
 
   // Drag to pan when zoomed in
   let drag: { pane: HTMLDivElement; x: number; y: number } | null = null;
-  function onPointerDown(e: PointerEvent, pane: HTMLDivElement) {
-    if (zoom === 1 || e.button !== 0) return;
+  function onPointerDown(e: PointerEvent, side: number) {
+    const pane = panes[side];
+    if (!pane || zooms[side] === 1 || e.button !== 0) return;
     drag = { pane, x: e.clientX, y: e.clientY };
     pane.setPointerCapture(e.pointerId);
   }
@@ -88,16 +133,18 @@
     drag = null;
   }
 
+  // Zooms back out as far as the lock allows, or in if there's nowhere to go
   function onDoubleClick(e: MouseEvent, pane: number) {
-    setZoom(zoom > 1 ? 1 : 2.5, { pane, clientX: e.clientX, clientY: e.clientY });
+    const lowest = lockZoom ? Math.min(...zooms) : zooms[pane];
+    zoomBy(lowest > 1 ? 1 / lowest : 2.5, { pane, clientX: e.clientX, clientY: e.clientY });
   }
 
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onclose();
-      if (e.key === '+' || e.key === '=') setZoom(zoom * 1.25);
-      if (e.key === '-') setZoom(zoom / 1.25);
-      if (e.key === '0') setZoom(1);
+      if (e.key === '+' || e.key === '=') zoomBy(1.25);
+      if (e.key === '-') zoomBy(1 / 1.25);
+      if (e.key === '0') fit();
     };
     window.addEventListener('keydown', onKey);
 
@@ -124,11 +171,33 @@
   <header class="flex items-center justify-between gap-4 px-5 py-3 border-b border-border">
     <p class="text-sm font-semibold">Compare</p>
     <div class="flex items-center gap-2 text-xs">
-      <button class="btn-outline px-2.5" onclick={() => setZoom(zoom / 1.25)} aria-label="Zoom out">−</button>
-      <span class="w-12 text-center text-text-secondary tabular-nums">{Math.round(zoom * 100)}%</span>
-      <button class="btn-outline px-2.5" onclick={() => setZoom(zoom * 1.25)} aria-label="Zoom in">+</button>
-      <button class="btn-outline" onclick={() => setZoom(1)}>Fit</button>
-      <span class="text-text-muted ml-2 hidden lg:inline">Pinch or ⌘ + scroll to zoom both · scroll or drag to pan each · Esc to close</span>
+      <button class="btn-outline px-2.5" onclick={() => zoomBy(1 / 1.25)} aria-label="Zoom out">−</button>
+      <span class="min-w-12 text-center text-text-secondary tabular-nums">
+        {#if zooms[0] === zooms[1]}
+          {Math.round(zooms[0] * 100)}%
+        {:else}
+          {Math.round(zooms[0] * 100)}% · {Math.round(zooms[1] * 100)}%
+        {/if}
+      </span>
+      <button class="btn-outline px-2.5" onclick={() => zoomBy(1.25)} aria-label="Zoom in">+</button>
+      <button class="btn-outline" onclick={fit}>Fit</button>
+      <button
+        class="btn-outline ml-2 {lockZoom ? 'border-[var(--accent)] text-text-primary' : ''}"
+        aria-pressed={lockZoom}
+        title="Zoom both sides together, keeping any difference between them"
+        onclick={() => (lockZoom = !lockZoom)}
+      >
+        Lock zoom
+      </button>
+      <button
+        class="btn-outline {lockPan ? 'border-[var(--accent)] text-text-primary' : ''}"
+        aria-pressed={lockPan}
+        title="Pan both sides together"
+        onclick={() => (lockPan = !lockPan)}
+      >
+        Lock pan
+      </button>
+      <span class="text-text-muted ml-2 hidden xl:inline">Pinch or ⌘ + scroll to zoom · scroll or drag to pan · Esc to close</span>
     </div>
     <button class="btn-outline text-xs" onclick={onclose}>Close</button>
   </header>
@@ -140,17 +209,19 @@
 
         <div
           bind:this={panes[side]}
-          class="flex-1 min-h-0 overflow-auto bg-elevated {zoom > 1 ? 'cursor-grab active:cursor-grabbing' : ''}"
+          class="flex-1 min-h-0 overflow-auto bg-elevated {zooms[side] > 1 ? 'cursor-grab active:cursor-grabbing' : ''}"
           role="img"
           aria-label={item?.label}
           onwheel={(e) => onWheel(e, side)}
-          onpointerdown={(e) => onPointerDown(e, panes[side]!)}
+          onscroll={() => onScroll(side)}
+          onpointerenter={() => (active = side)}
+          onpointerdown={(e) => onPointerDown(e, side)}
           onpointermove={onPointerMove}
           onpointerup={onPointerUp}
           onpointercancel={onPointerUp}
           ondblclick={(e) => onDoubleClick(e, side)}
         >
-          <div style="width: {zoom * 100}%; height: {zoom * 100}%;">
+          <div style="width: {zooms[side] * 100}%; height: {zooms[side] * 100}%;">
             {#if item}
               <img src={item.url} alt={item.label} draggable="false" class="w-full h-full object-contain select-none" />
             {/if}
