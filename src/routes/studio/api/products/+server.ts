@@ -4,7 +4,7 @@ import { db } from '$lib/db';
 import { appAdmin } from '$lib/server/shopify/appAdmin';
 
 const PAGE_SIZE = 48;
-// Activity sorts look up this many recent products, then apply the filters to those
+// Activity sorts look up this many products from the newest (or oldest) end, then apply the filters to those
 const ACTIVITY_LIMIT = 100;
 
 const SHOPIFY_SORTS: Record<string, { sortKey: string; reverse: boolean }> = {
@@ -31,21 +31,21 @@ function searchFilter(url: URL) {
 }
 
 // Most recent edit per product = newest change to any of its generated images (discards included)
-async function editedTimes(gids?: string[]) {
+async function editedTimes(gids?: string[], oldestFirst = false) {
   const rows = await db.generatedImage.groupBy({
     by: ['productGid'],
     where: gids ? { productGid: { in: gids } } : undefined,
     _max: { updatedAt: true },
-    orderBy: { _max: { updatedAt: 'desc' } },
+    orderBy: { _max: { updatedAt: oldestFirst ? 'asc' : 'desc' } },
     take: gids ? undefined : ACTIVITY_LIMIT
   });
   return new Map(rows.map((r) => [r.productGid, r._max.updatedAt!]));
 }
 
-async function viewedTimes(gids?: string[]) {
+async function viewedTimes(gids?: string[], oldestFirst = false) {
   const rows = await db.studioProductView.findMany({
     where: gids ? { productGid: { in: gids } } : undefined,
-    orderBy: { viewedAt: 'desc' },
+    orderBy: { viewedAt: oldestFirst ? 'asc' : 'desc' },
     take: gids ? undefined : ACTIVITY_LIMIT
   });
   return new Map(rows.map((r) => [r.productGid, r.viewedAt]));
@@ -55,12 +55,14 @@ export const GET: RequestHandler = async ({ url, locals }) => {
   if (!locals.user) error(401, 'Unauthorized');
 
   const sort = url.searchParams.get('sort') ?? 'updated';
+  // flips whichever sort is picked: oldest first, or Z to A
+  const flipped = url.searchParams.get('reverse') === '1';
   const filter = searchFilter(url);
   const activitySort = sort === 'viewed' || sort === 'edited';
 
   let recent: Map<string, Date> | null = null;
   if (activitySort) {
-    recent = sort === 'viewed' ? await viewedTimes() : await editedTimes();
+    recent = sort === 'viewed' ? await viewedTimes(undefined, flipped) : await editedTimes(undefined, flipped);
     if (!recent.size) return json({ products: [], next: null });
     filter.unshift(`(${[...recent.keys()].map((gid) => `id:${numericId(gid)}`).join(' OR ')})`);
   }
@@ -82,7 +84,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
       first: activitySort ? ACTIVITY_LIMIT : PAGE_SIZE,
       after: activitySort ? null : url.searchParams.get('after'),
       sortKey: order.sortKey,
-      reverse: order.reverse
+      reverse: order.reverse !== flipped
     }
   );
   if (res.errors?.length) error(502, res.errors[0].message);
@@ -103,7 +105,10 @@ export const GET: RequestHandler = async ({ url, locals }) => {
   }));
 
   // Shopify returns the id matches in its own order, so put them back in activity order
-  if (recent) products.sort((a, b) => recent.get(b.id)!.getTime() - recent.get(a.id)!.getTime());
+  if (recent) {
+    products.sort((a, b) => recent.get(b.id)!.getTime() - recent.get(a.id)!.getTime());
+    if (flipped) products.reverse();
+  }
 
   const pageInfo = res.data.products.pageInfo;
   return json({ products, next: !activitySort && pageInfo.hasNextPage ? pageInfo.endCursor : null });
