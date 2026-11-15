@@ -15,6 +15,7 @@ export const GENERATED_SELECT = {
   sourceMediaIds: true,
   status: true,
   creativeId: true,
+  shopifyMediaId: true,
   parentId: true,
   instruction: true,
   createdAt: true
@@ -383,6 +384,63 @@ export async function addToProduct(imageId: string, alt: string) {
 
   const mediaId = res.data.productUpdate.product.media.nodes[0]?.id ?? null;
   await db.generatedImage.update({ where: { id: imageId }, data: { status: 'ADDED', shopifyMediaId: mediaId } });
+}
+
+// Takes a photo off the listing. The file itself stays in Shopify's Files, so it can be put back.
+export async function removeFromProduct(productId: string, mediaId: string) {
+  const res = await appAdmin()(
+    `mutation RemoveProductImage($files: [FileUpdateInput!]!) {
+      fileUpdate(files: $files) {
+        files { id }
+        userErrors { field message }
+      }
+    }`,
+    { files: [{ id: mediaId, referencesToRemove: [toProductGid(productId)] }] }
+  );
+  const err = res.errors?.[0]?.message ?? res.data?.fileUpdate?.userErrors?.[0]?.message;
+  if (err) throw new Error(err);
+
+  // a generated image that was on the listing can be added again
+  await db.generatedImage.updateMany({ where: { shopifyMediaId: mediaId }, data: { status: 'NEW', shopifyMediaId: null } });
+}
+
+// imageIds is every listing photo in its new order. Videos and 3D models keep their slots.
+export async function reorderProductMedia(productId: string, imageIds: string[]) {
+  const admin = appAdmin();
+  const id = toProductGid(productId);
+
+  const current = await admin(
+    `query ProductMediaOrder($id: ID!) {
+      product(id: $id) { media(first: 250) { nodes { id mediaContentType } } }
+    }`,
+    { id }
+  );
+  if (current.errors?.length) throw new Error(current.errors[0].message);
+  const nodes: { id: string; mediaContentType: string }[] = current.data?.product?.media.nodes ?? [];
+
+  const images = nodes.filter((n) => n.mediaContentType === 'IMAGE').map((n) => n.id);
+  if (images.length !== imageIds.length || images.some((i) => !imageIds.includes(i))) {
+    throw new Error('The photos on this listing changed, reload and try again');
+  }
+
+  const queue = [...imageIds];
+  const wanted = nodes.map((n) => (n.mediaContentType === 'IMAGE' ? queue.shift()! : n.id));
+  const moves = wanted
+    .map((mediaId, position) => ({ id: mediaId, newPosition: String(position) }))
+    .filter((move, position) => nodes[position].id !== move.id);
+  if (moves.length === 0) return;
+
+  const res = await admin(
+    `mutation ReorderProductMedia($id: ID!, $moves: [MoveInput!]!) {
+      productReorderMedia(id: $id, moves: $moves) {
+        job { id }
+        mediaUserErrors { field message }
+      }
+    }`,
+    { id, moves }
+  );
+  const err = res.errors?.[0]?.message ?? res.data?.productReorderMedia?.mediaUserErrors?.[0]?.message;
+  if (err) throw new Error(err);
 }
 
 export async function saveToLibrary(imageId: string) {
