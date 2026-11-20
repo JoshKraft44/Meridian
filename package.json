@@ -12,7 +12,8 @@
     "meta:check": "tsx --env-file=.env bin/meta-check.ts",
     "creatives:import": "tsx --env-file=.env bin/import-creatives.ts",
     "drafts": "tsx --env-file=.env bin/drafts.ts",
-    "ads:boost": "tsx --env-file=.env bin/boost-posts.ts"
+    "ads:boost": "tsx --env-file=.env bin/boost-posts.ts",
+    "reviews:sync": "tsx --env-file=.env bin/reviews-sync.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
