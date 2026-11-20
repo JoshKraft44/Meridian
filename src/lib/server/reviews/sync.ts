@@ -377,6 +377,7 @@ export async function syncReviews(deps: ReviewSyncDeps) {
 				photos: all.filter((r) => r.image).length,
 				etsy: all.filter((r) => r.source === 'etsy').length,
 				site: all.filter((r) => r.source === 'site').length,
+				breakdown: [5, 4, 3, 2, 1].map((stars) => all.filter((r) => r.rating === stars).length),
 				updated_at: new Date().toISOString()
 			})
 		}
